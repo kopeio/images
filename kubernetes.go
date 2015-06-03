@@ -33,6 +33,7 @@ type EndpointWatch interface {
 	DeleteEndpoints(e *kapi.Endpoints)
 	UpdateEndpoints(oldEndpoints, newEndpoints *kapi.Endpoints)
 }
+
 type ServiceWatch interface {
 	AddService(s *kapi.Service)
 	DeleteService(s *kapi.Service)
@@ -76,7 +77,9 @@ func getKubeMasterUrl() (string, error) {
 	if parsedUrl.Scheme == "" || parsedUrl.Host == "" || parsedUrl.Host == ":" {
 		return "", fmt.Errorf("invalid kubernetes url: %s", s)
 	}
-	return parsedUrl.String(), nil
+	masterUrl := parsedUrl.String()
+	glog.V(2).Info("Using kubernetes master url: ", masterUrl)
+	return masterUrl, nil
 }
 
 func getKubeConfig(masterUrl string) (*kclient.Config, error) {
