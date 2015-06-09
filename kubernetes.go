@@ -150,8 +150,8 @@ func (k *Kubernetes) WatchEndpoints(watcher EndpointWatch) {
 	// TODO: filter
 	lw := cache.NewListWatchFromClient(k.kubeClient, "endpoints", kapi.NamespaceAll, kSelector.Everything())
 
-	var serviceController *kcontrollerFramework.Controller
-	_, serviceController = framework.NewInformer(
+	var controller *kcontrollerFramework.Controller
+	_, controller = framework.NewInformer(
 		lw,
 		&kapi.Endpoints{},
 		resyncPeriod,
@@ -186,7 +186,7 @@ func (k *Kubernetes) WatchEndpoints(watcher EndpointWatch) {
 			},
 		},
 	)
-	serviceController.Run(util.NeverStop)
+	controller.Run(util.NeverStop)
 }
 
 func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
@@ -196,10 +196,10 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 	// TODO: filter
 	lw := cache.NewListWatchFromClient(k.kubeClient, "services", kapi.NamespaceAll, kSelector.Everything())
 
-	var serviceController *kcontrollerFramework.Controller
-	_, serviceController = framework.NewInformer(
+	var controller *kcontrollerFramework.Controller
+	_, controller = framework.NewInformer(
 		lw,
-		&kapi.Endpoints{},
+		&kapi.Service{},
 		resyncPeriod,
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(o interface{}) {
@@ -232,5 +232,5 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 			},
 		},
 	)
-	serviceController.Run(util.NeverStop)
+	controller.Run(util.NeverStop)
 }
