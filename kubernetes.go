@@ -6,7 +6,6 @@ import (
 	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
 	kclientcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd"
-	kclientcmdapi "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
 	kcontrollerFramework "github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
 	kSelector "github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
@@ -93,9 +92,16 @@ func getKubeConfig(masterUrl string) (*kclient.Config, error) {
 	}
 
 	if fileExists(p) {
+		glog.Info("Using kubecfg file: ", p)
+
+		overrides := &kclientcmd.ConfigOverrides{}
+		if masterUrl != "" {
+			overrides.ClusterInfo.Server = masterUrl
+		}
+
 		config, err := kclientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			&kclientcmd.ClientConfigLoadingRules{ExplicitPath: p},
-			&kclientcmd.ConfigOverrides{ClusterInfo: kclientcmdapi.Cluster{Server: masterUrl}}).ClientConfig()
+			overrides).ClientConfig()
 		if err != nil {
 			return nil, fmt.Errorf("error loading kubecfg file (%s): %v", p, err)
 		}
