@@ -2,16 +2,18 @@ package kope
 
 import (
 	"fmt"
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
 	kclientcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd"
 	kclientcmdapi "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
 	kcontrollerFramework "github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
-	kSelector "github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
+	"net"
 	"net/url"
 	"os"
 	"time"
@@ -24,23 +26,28 @@ import (
 const DefaultKubecfgFile = "/etc/kubernetes/kubeconfig"
 
 const (
-	// Resync period for the kube controller loop.
+// Resync period for the kube controller loop.
 	resyncPeriod = 5 * time.Second
 )
 
 type EndpointWatch interface {
-	AddEndpoints(e *kapi.Endpoints)
-	DeleteEndpoints(e *kapi.Endpoints)
-	UpdateEndpoints(oldEndpoints, newEndpoints *kapi.Endpoints)
+	AddEndpoints(e *api.Endpoints)
+	DeleteEndpoints(e *api.Endpoints)
+	UpdateEndpoints(oldEndpoints, newEndpoints *api.Endpoints)
 }
 type ServiceWatch interface {
-	AddService(s *kapi.Service)
-	DeleteService(s *kapi.Service)
-	UpdateService(oldService, newService *kapi.Service)
+	AddService(s *api.Service)
+	DeleteService(s *api.Service)
+	UpdateService(oldService, newService *api.Service)
 }
 
 type Kubernetes struct {
 	kubeClient *kclient.Client
+}
+
+func IsKubernetes() bool {
+	host := os.Getenv("KUBERNETES_HOST")
+	return host != ""
 }
 
 func fileExists(path string) bool {
@@ -139,16 +146,16 @@ func (k *Kubernetes) WatchEndpoints(watcher EndpointWatch) {
 
 	// Watch all changes
 	// TODO: filter
-	lw := cache.NewListWatchFromClient(k.kubeClient, "endpoints", kapi.NamespaceAll, kSelector.Everything())
+	lw := cache.NewListWatchFromClient(k.kubeClient, "endpoints", api.NamespaceAll, fields.Everything())
 
 	var serviceController *kcontrollerFramework.Controller
 	_, serviceController = framework.NewInformer(
 		lw,
-		&kapi.Endpoints{},
+		&api.Endpoints{},
 		resyncPeriod,
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(o interface{}) {
-				e, ok := o.(*kapi.Endpoints)
+				e, ok := o.(*api.Endpoints)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Endpoints", o)
 				} else {
@@ -156,7 +163,7 @@ func (k *Kubernetes) WatchEndpoints(watcher EndpointWatch) {
 				}
 			},
 			DeleteFunc: func(o interface{}) {
-				e, ok := o.(*kapi.Endpoints)
+				e, ok := o.(*api.Endpoints)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Endpoints", o)
 				} else {
@@ -164,11 +171,11 @@ func (k *Kubernetes) WatchEndpoints(watcher EndpointWatch) {
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				oldE, ok := oldObj.(*kapi.Endpoints)
+				oldE, ok := oldObj.(*api.Endpoints)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Endpoints", oldObj)
 				}
-				newE, ok := newObj.(*kapi.Endpoints)
+				newE, ok := newObj.(*api.Endpoints)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Endpoints", newObj)
 				}
@@ -185,16 +192,16 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 
 	// Watch all changes
 	// TODO: filter
-	lw := cache.NewListWatchFromClient(k.kubeClient, "services", kapi.NamespaceAll, kSelector.Everything())
+	lw := cache.NewListWatchFromClient(k.kubeClient, "services", api.NamespaceAll, fields.Everything())
 
 	var serviceController *kcontrollerFramework.Controller
 	_, serviceController = framework.NewInformer(
 		lw,
-		&kapi.Endpoints{},
+		&api.Endpoints{},
 		resyncPeriod,
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(o interface{}) {
-				e, ok := o.(*kapi.Service)
+				e, ok := o.(*api.Service)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Service", o)
 				} else {
@@ -202,7 +209,7 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 				}
 			},
 			DeleteFunc: func(o interface{}) {
-				e, ok := o.(*kapi.Service)
+				e, ok := o.(*api.Service)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Service", o)
 				} else {
@@ -210,11 +217,11 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				oldE, ok := oldObj.(*kapi.Service)
+				oldE, ok := oldObj.(*api.Service)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Service", oldObj)
 				}
-				newE, ok := newObj.(*kapi.Service)
+				newE, ok := newObj.(*api.Service)
 				if !ok {
 					glog.Warning("Got unexpected object of type %T, expecting Service", newObj)
 				}
@@ -225,3 +232,106 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 	)
 	serviceController.Run(util.NeverStop)
 }
+
+func findSelfPodIP() (net.IP, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	ips := []net.IP{}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, addr := range addrs {
+
+
+			var ip net.IP
+			switch v := addr.(type) {
+				case *net.IPNet:
+				ip = v.IP
+				case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil {
+				continue // not an ipv4 address
+			}
+			ips = append(ips, ip)
+		}
+	}
+
+	if len(ips) == 0 {
+		return nil, nil
+	}
+
+	if len(ips) > 1 {
+		glog.Warning("Found multiple local IPs, making arbitrary choice: ", ips)
+	}
+	return ips[0], nil
+}
+
+func (k *Kubernetes) FindSelfPod() (*api.Pod, error) {
+	glog.Info("Querying kubernetes for self-pod")
+
+	podIP, err := findSelfPodIP()
+	if err != nil {
+		return nil, err
+	}
+	if podIP == nil {
+		return nil, nil
+	}
+	return k.FindPodByPodIp(podIP.String())
+}
+
+func (k *Kubernetes) FindPodByPodIp(podIP string) (*api.Pod, error) {
+	// TODO: make this efficient
+	glog.Warning("Querying kubernetes for self-pod is inefficient")
+
+
+	// TODO: Can we use api.NamespaceAll,?
+	pods, err := k.kubeClient.Pods(api.NamespaceAll).List(labels.Everything(), fields.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for j := range pods.Items {
+		pod := &pods.Items[j]
+		if pod.Status.PodIP == podIP {
+			return pod, nil
+		}
+	}
+
+	//	namespaces, err := k.kubeClient.Namespaces().List(labels.Everything(), fields.Everything())
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	for i := range namespaces.Items {
+	//		namespace := &namespaces.Items[i]
+	//		pods, err := k.kubeClient.Pods(namespace.Name).List(labels.Everything(), fields.Everything())
+	//		if err != nil {
+	//			return nil, err
+	//		}
+	//
+	//		for j := range pods.Items {
+	//			pod := &pods.Items[j]
+	//			if pod.Status.PodIP == podIP {
+	//				return pod, nil
+	//			}
+	//		}
+	//	}
+	return nil, nil
+}
+
