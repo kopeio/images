@@ -94,35 +94,39 @@ func (m *Manager) Start() (*process.Process, error) {
 		return nil, err
 	}
 
-	hosts := map[string]string{}
-	hostPrefix := "cluster-zk-"
+	if len(clusterMap) != 0 {
+		glog.Info("Detected cluster configuration")
+		hosts := map[string]string{}
+		hostPrefix := "cluster-zk-"
 
-	m.config.Servers = []ZkServer{}
-	for k, pod := range clusterMap {
-		zkServer := ZkServer{}
-		id, err := strconv.Atoi(k)
+		m.config.Servers = []ZkServer{}
+		for k, pod := range clusterMap {
+			zkServer := ZkServer{}
+			id, err := strconv.Atoi(k)
+			if err != nil {
+				glog.Warning("Ignoring cluster entries with invalid nodeid: ", k)
+				continue
+			}
+			zkServer.Id = id
+			host := hostPrefix + k
+			zkServer.Host = host
+			zkServer.ProxyPort = 2888
+			zkServer.LeaderPort = 3888
+			m.config.Servers = append(m.config.Servers, zkServer)
+
+			podIP := ""
+			if pod != nil {
+				podIP = pod.Pod.Status.PodIP
+			}
+			hosts[host] = podIP
+		}
+
+		err = kope.SetEtcHosts(hostPrefix, hosts)
 		if err != nil {
-			glog.Warning("Ignoring cluster entries with invalid nodeid: ", k)
-			continue
+			return nil, err
 		}
-		zkServer.Id = id
-		host := hostPrefix + k
-		zkServer.Host = host
-		zkServer.ProxyPort = 2888
-		zkServer.LeaderPort = 3888
-		m.config.Servers = append(m.config.Servers, zkServer)
-
-		podIP := ""
-		if pod != nil {
-			podIP = pod.Pod.Status.PodIP
-		}
-		hosts[host] = podIP
 	}
 
-	err = kope.SetEtcHosts(hostPrefix, hosts)
-	if err != nil {
-		return nil, err
-	}
 	err = kope.WriteTemplate("/data/conf/zoo.cfg", &m.config)
 	if err != nil {
 		return nil, err
