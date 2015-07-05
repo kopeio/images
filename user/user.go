@@ -38,5 +38,9 @@ func Find(username string) (*User, error) {
 }
 
 func (u *User) Chown(f string) error {
-	return os.Chown(f, u.Uid, u.Gid)
+	err := os.Chown(f, u.Uid, u.Gid)
+	if err != nil {
+		return chained.Error(err, "error doing chown on: ", f)
+	}
+	return nil
 }

@@ -1,0 +1,43 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"mongodb",
+    "labels":{
+      "name":"mongodb"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"mongodb"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"mongodb"
+        }
+      },
+      "spec":{
+        "containers":[
+          {
+            "image":"kope/mongodb:latest",
+            "name":"mongodb",
+            "ports":[
+              {
+                "name":"mongodb",
+                "containerPort":27017,
+                "protocol":"TCP"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "128Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

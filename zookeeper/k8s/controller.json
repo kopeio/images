@@ -1,0 +1,43 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"zookeeper",
+    "labels":{
+      "name":"zookeeper"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"zookeeper"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"zookeeper"
+        }
+      },
+      "spec":{
+        "containers":[
+          {
+            "image":"kope/zookeeper:latest",
+            "name":"zookeeper",
+            "ports":[
+              {
+                "name":"zookeeper",
+                "containerPort":2181,
+                "protocol":"TCP"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "256Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

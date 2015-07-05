@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"mongodb",
+    "labels":{
+      "name":"mongodb"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":27017,
+        "targetPort":"mongodb",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"mongodb"
+    }
+  }
+}

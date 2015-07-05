@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"zookeeper",
+    "labels":{
+      "name":"zookeeper"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":2181,
+        "targetPort":"zookeeper",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"zookeeper"
+    }
+  }
+}
