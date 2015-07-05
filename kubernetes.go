@@ -6,7 +6,6 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
 	kclientcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd"
-	kclientcmdapi "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
 	kcontrollerFramework "github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
@@ -31,6 +30,7 @@ type EndpointWatch interface {
 	DeleteEndpoints(e *api.Endpoints)
 	UpdateEndpoints(oldEndpoints, newEndpoints *api.Endpoints)
 }
+
 type ServiceWatch interface {
 	AddService(s *api.Service)
 	DeleteService(s *api.Service)
@@ -79,7 +79,9 @@ func getKubeMasterUrl() (string, error) {
 	if parsedUrl.Scheme == "" || parsedUrl.Host == "" || parsedUrl.Host == ":" {
 		return "", fmt.Errorf("invalid kubernetes url: %s", s)
 	}
-	return parsedUrl.String(), nil
+	masterUrl := parsedUrl.String()
+	glog.V(2).Info("Using kubernetes master url: ", masterUrl)
+	return masterUrl, nil
 }
 
 func getKubeConfig(masterUrl string) (*client.Config, error) {
@@ -93,9 +95,16 @@ func getKubeConfig(masterUrl string) (*client.Config, error) {
 	}
 
 	if FileExists(p) {
+		glog.Info("Using kubecfg file: ", p)
+
+		overrides := &kclientcmd.ConfigOverrides{}
+		if masterUrl != "" {
+			overrides.ClusterInfo.Server = masterUrl
+		}
+
 		config, err := kclientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			&kclientcmd.ClientConfigLoadingRules{ExplicitPath: p},
-			&kclientcmd.ConfigOverrides{ClusterInfo: kclientcmdapi.Cluster{Server: masterUrl}}).ClientConfig()
+			overrides).ClientConfig()
 		if err != nil {
 			return nil, fmt.Errorf("error loading kubecfg file (%s): %v", p, err)
 		}
@@ -140,8 +149,8 @@ func (k *Kubernetes) WatchEndpoints(watcher EndpointWatch) {
 	// TODO: filter
 	lw := cache.NewListWatchFromClient(k.kubeClient, "endpoints", api.NamespaceAll, fields.Everything())
 
-	var serviceController *kcontrollerFramework.Controller
-	_, serviceController = framework.NewInformer(
+	var controller *kcontrollerFramework.Controller
+	_, controller = framework.NewInformer(
 		lw,
 		&api.Endpoints{},
 		resyncPeriod,
@@ -176,7 +185,7 @@ func (k *Kubernetes) WatchEndpoints(watcher EndpointWatch) {
 			},
 		},
 	)
-	serviceController.Run(util.NeverStop)
+	controller.Run(util.NeverStop)
 }
 
 func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
@@ -186,10 +195,10 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 	// TODO: filter
 	lw := cache.NewListWatchFromClient(k.kubeClient, "services", api.NamespaceAll, fields.Everything())
 
-	var serviceController *kcontrollerFramework.Controller
-	_, serviceController = framework.NewInformer(
+	var controller *kcontrollerFramework.Controller
+	_, controller = framework.NewInformer(
 		lw,
-		&api.Endpoints{},
+		&api.Service{},
 		resyncPeriod,
 		framework.ResourceEventHandlerFuncs{
 			AddFunc: func(o interface{}) {
@@ -222,7 +231,7 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 			},
 		},
 	)
-	serviceController.Run(util.NeverStop)
+	controller.Run(util.NeverStop)
 }
 
 func findSelfPodIP() (net.IP, error) {
