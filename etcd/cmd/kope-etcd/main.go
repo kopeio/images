@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/golang/glog"
-	"github.com/kopeio/kope/registry"
+	"github.com/kopeio/kope/etcd"
 	"math/rand"
 	"time"
 )
@@ -14,7 +14,7 @@ func main() {
 
 	flag.Parse()
 
-	manager := &registry.Manager{}
+	manager := &etcd.Manager{}
 	err := manager.Manage()
 	if err != nil {
 		glog.Fatalf("manager exited with error: %v", err)

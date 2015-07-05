@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"etcd",
+    "labels":{
+      "name":"etcd"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":4001,
+        "targetPort":"etcd",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"etcd"
+    }
+  }
+}

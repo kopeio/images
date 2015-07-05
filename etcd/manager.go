@@ -1,7 +1,6 @@
-package registry
+package etcd
 
 import (
-	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
 	"time"
@@ -12,17 +11,9 @@ type Manager struct {
 	base.KopeBaseManager
 
 	process          *process.Process
-	config           ConfigData
-}
-
-type ConfigData struct {
-	Secret string
 }
 
 func (m *Manager) Configure() error {
-	// TODO: Get from k8s secret?
-	m.config.Secret = "somesecret"
-
 	return nil
 }
 
@@ -49,16 +40,8 @@ func (m *Manager) Manage() error {
 
 	return nil
 }
-
 func (m *Manager) Start() (*process.Process, error) {
-	configPath := "/config.yml"
-	err := kope.WriteTemplate(configPath, &m.config)
-	if err != nil {
-		return nil, chained.Error(err, "Error writing configuration template")
-	}
-
-	argv := []string{"/opt/registry/registry"}
-	argv = append(argv, configPath)
+	argv := []string{"/opt/etcd/etcd"}
 
 	config := &process.ProcessConfig{}
 	config.Argv = argv
