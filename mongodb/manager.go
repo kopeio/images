@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-
 type Manager struct {
 	base.KopeBaseManager
 	process *process.Process
@@ -19,7 +18,7 @@ type Manager struct {
 
 type Config struct {
 	DataDir string
-	LogDir string
+	LogDir  string
 }
 
 func (m *Manager) Configure() error {
@@ -92,4 +91,3 @@ func (m *Manager) Start() (*process.Process, error) {
 	}
 	return process, nil
 }
-

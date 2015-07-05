@@ -2,23 +2,34 @@
   "kind":"ReplicationController",
   "apiVersion":"v1",
   "metadata":{
-    "name":"zookeeper",
+    "name":"zookeeper-cluster1",
     "labels":{
-      "name":"zookeeper"
+      "name":"zookeeper-cluster1",
+      "kope.io/clusterid": "cluster1"
     }
   },
   "spec":{
     "replicas":1,
     "selector":{
-      "name":"zookeeper"
+      "name":"zookeeper",
+      "kope.io/clusterid": "cluster1"
     },
     "template":{
       "metadata":{
         "labels":{
-          "name":"zookeeper"
+          "name":"zookeeper",
+          "kope.io/clusterid": "cluster1"
         }
       },
       "spec":{
+        "volumes": [
+          {
+            "name": "data",
+            "persistentVolumeClaim": {
+              "claimName": "claim-zookeeper-cluster1-1"
+            }
+          }
+        ],
         "containers":[
           {
             "image":"kope/zookeeper:latest",
@@ -28,6 +39,12 @@
                 "name":"zookeeper",
                 "containerPort":2181,
                 "protocol":"TCP"
+              }
+            ],
+            "volumeMounts": [
+              {
+                "name": "data",
+                "mountPath": "/data"
               }
             ],
             "resources": {

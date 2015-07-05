@@ -1,0 +1,22 @@
+{
+  "kind": "PersistentVolume",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "zookeeper-cluster1-1",
+    "labels": {
+      "name": "zookeeper-cluster1-1",
+      "kope.io/clusterid": "cluster1",
+      "kope.io/nodeid": "1"
+    }
+  },
+  "spec": {
+    "capacity": {
+      "storage": "5Gi"
+    },
+    "accessModes": ["ReadWriteOnce"],
+    "awsElasticBlockStore": {
+      "volumeID": "aws://eu-west-1a/vol-2533c3d5",
+      "fsType": "ext4"
+    }
+  }
+}

@@ -2,13 +2,13 @@ package zookeeper
 
 import (
 	"github.com/golang/glog"
+	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/base"
 	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
-	"time"
-	"github.com/kopeio/kope"
 	"os"
 	"strings"
+	"time"
 )
 
 const DefaultMemory = 256
@@ -16,9 +16,8 @@ const DefaultMemory = 256
 type Manager struct {
 	base.KopeBaseManager
 	process *process.Process
-	config Config
+	config  Config
 }
-
 
 type ZkServer struct {
 	Id         int
@@ -30,7 +29,6 @@ type ZkServer struct {
 type Config struct {
 	Servers []ZkServer
 }
-
 
 func (m *Manager) Configure() error {
 	err := m.ConfigureMemory()
@@ -82,8 +80,6 @@ func (m *Manager) Manage() error {
 	return nil
 }
 
-
-
 func (m *Manager) Start() (*process.Process, error) {
 	for _, dir := range []string{"/data/conf", "/data/zk/logs", "/data/zk/data"} {
 		err := os.MkdirAll(dir, 0777)
@@ -91,8 +87,6 @@ func (m *Manager) Start() (*process.Process, error) {
 			return nil, chained.Error(err, "error doing mkdir on: ", dir)
 		}
 	}
-
-
 
 	err := kope.WriteTemplate("/data/conf/zoo.cfg", &m.config)
 	if err != nil {
@@ -106,7 +100,7 @@ func (m *Manager) Start() (*process.Process, error) {
 	//export ZOOCFGDIR=/data/conf
 
 	// TODO: Actually set memory
-	
+
 	argv := []string{"/usr/bin/java"}
 
 	//java -Dzookeeper.log.dir=. -Dzookeeper.root.logger=INFO,CONSOLE -cp /opt/zk/bin/../build/classes:/opt/zk/bin/../build/lib/*.jar:/opt/zk/bin/../lib/slf4j-log4j12-1.6.1.jar:/opt/zk/bin/../lib/slf4j-api-1.6.1.jar:/opt/zk/bin/../lib/netty-3.7.0.Final.jar:/opt/zk/bin/../lib/log4j-1.2.16.jar:/opt/zk/bin/../lib/jline-0.9.94.jar:/opt/zk/bin/../zookeeper-3.4.6.jar:/opt/zk/bin/../src/java/lib/*.jar:/data/conf: -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.local.only=false org.apache.zookeeper.server.quorum.QuorumPeerMain /data/conf/zoo.cfg
@@ -130,4 +124,3 @@ func (m *Manager) Start() (*process.Process, error) {
 	return process, nil
 	//echo "ruok" | nc 127.0.0.1 2181
 }
-

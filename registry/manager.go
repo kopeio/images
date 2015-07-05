@@ -2,17 +2,17 @@ package registry
 
 import (
 	"github.com/kopeio/kope"
+	"github.com/kopeio/kope/base"
 	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
 	"time"
-	"github.com/kopeio/kope/base"
 )
 
 type Manager struct {
 	base.KopeBaseManager
 
-	process          *process.Process
-	config           ConfigData
+	process *process.Process
+	config  ConfigData
 }
 
 type ConfigData struct {
