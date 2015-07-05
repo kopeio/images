@@ -2,39 +2,34 @@
   "kind":"ReplicationController",
   "apiVersion":"v1",
   "metadata":{
-    "name":"memcached",
+    "name":"registry",
     "labels":{
-      "name":"memcached"
+      "name":"registry"
     }
   },
   "spec":{
     "replicas":1,
     "selector":{
-      "name":"memcached"
+      "name":"registry"
     },
     "template":{
       "metadata":{
         "labels":{
-          "name":"memcached"
+          "name":"registry"
         }
       },
       "spec":{
         "containers":[
           {
-            "image":"kope/memcached:latest",
-            "name":"memcached",
+            "image":"kope/registry:latest",
+            "name":"registry",
             "ports":[
               {
-                "name":"memcached",
-                "containerPort":11211,
+                "name":"registry",
+                "containerPort":5000,
                 "protocol":"TCP"
               }
-            ],
-            "resources": {
-              "limits": {
-                "memory": "128Mi"
-              }
-            }
+            ]
           }
         ]
       }

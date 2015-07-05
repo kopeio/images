@@ -35,7 +35,7 @@ func (m *MemcacheManager) Configure() error {
 		m.MemoryMb = DefaultMemory
 
 		if selfPod != nil {
-			if len(selfPod.Spec.Containers) > 0 {
+			if len(selfPod.Spec.Containers) > 1 {
 				glog.Warning("Found multiple containers in pod, choosing arbitrarily")
 			}
 			memoryLimit := selfPod.Spec.Containers[0].Resources.Limits.Memory()
@@ -43,6 +43,7 @@ func (m *MemcacheManager) Configure() error {
 				memoryLimitBytes := memoryLimit.Value()
 				if memoryLimitBytes > 0 {
 					memoryLimitMB := int(memoryLimitBytes / (1024 * 1024))
+					glog.Info("Found container memory limit: ", memoryLimitMB)
 
 					// We leave 32 MB for overhead (connections etc)
 					memoryLimitMB -= 32
@@ -50,6 +51,7 @@ func (m *MemcacheManager) Configure() error {
 					if memoryLimitMB < 0 {
 						glog.Warning("Memory limit was too low; ignoring")
 					} else {
+						glog.Info("Setting memcached memory to ", memoryLimitMB)
 						m.MemoryMb = memoryLimitMB
 					}
 				}

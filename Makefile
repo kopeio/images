@@ -1,5 +1,13 @@
-.PHONY: memcached
+.PHONY: memcached registry push
+
+images: memcached registry
 
 memcached:
-	go install github.com/kopeio/kope/memcached/...
 	cd memcached; make
+
+registry:
+	cd registry; make
+
+push: images
+	docker push kope/registry
+	docker push kope/memcached

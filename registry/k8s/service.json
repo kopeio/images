@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"registry",
+    "labels":{
+      "name":"registry"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":5000,
+        "targetPort":"registry",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"registry"
+    }
+  }
+}

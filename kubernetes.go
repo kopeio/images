@@ -3,7 +3,7 @@ package kope
 import (
 	"fmt"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
 	kclientcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd"
 	kclientcmdapi "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd/api"
@@ -19,9 +19,6 @@ import (
 	"time"
 )
 
-//argKubecfgFile         = flag.String("kubecfg_file", "", "Location of kubecfg file for access to kubernetes service")
-//argKubeMasterUrl       = flag.String("kube_master_url", "https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}", "Url to reach kubernetes master. Env variables in this flag will be expanded.")
-//)
 
 const DefaultKubecfgFile = "/etc/kubernetes/kubeconfig"
 
@@ -42,11 +39,11 @@ type ServiceWatch interface {
 }
 
 type Kubernetes struct {
-	kubeClient *kclient.Client
+	kubeClient *client.Client
 }
 
 func IsKubernetes() bool {
-	host := os.Getenv("KUBERNETES_HOST")
+	host := os.Getenv("KUBERNETES_SERVICE_HOST")
 	return host != ""
 }
 
@@ -86,7 +83,7 @@ func getKubeMasterUrl() (string, error) {
 	return parsedUrl.String(), nil
 }
 
-func getKubeConfig(masterUrl string) (*kclient.Config, error) {
+func getKubeConfig(masterUrl string) (*client.Config, error) {
 	s := "${KUBECFG_FILE}"
 	p := os.ExpandEnv(s)
 
@@ -105,18 +102,14 @@ func getKubeConfig(masterUrl string) (*kclient.Config, error) {
 		}
 		return config, nil
 	} else {
-		glog.Warning("No kubecfg file found; using default (empty) configuration")
+		glog.Warning("No kubecfg file found; using default in-cluster configuration")
 
-		config := &kclient.Config{
-			Host:    masterUrl,
-			Version: "v1beta3",
-		}
-		return config, nil
+		return client.InClusterConfig()
 	}
 }
 
 // TODO: evaluate using pkg/client/clientcmd
-func newKubeClient() (*kclient.Client, error) {
+func newKubeClient() (*client.Client, error) {
 	masterUrl, err := getKubeMasterUrl()
 	if err != nil {
 		return nil, err
@@ -128,7 +121,7 @@ func newKubeClient() (*kclient.Client, error) {
 	}
 	glog.Infof("Using %s for kubernetes master", config.Host)
 	glog.Infof("Using kubernetes API %s", config.Version)
-	return kclient.New(config)
+	return client.New(config)
 }
 
 func NewKubernetesClient() (*Kubernetes, error) {
