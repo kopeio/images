@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"github.com/golang/glog"
+	"github.com/kopeio/kope/postgres"
 	"math/rand"
 	"time"
-	"github.com/kopeio/kope/postgres"
 )
 
 func main() {

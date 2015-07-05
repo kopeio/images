@@ -1,4 +1,5 @@
 package chained
+
 import "bytes"
 
 type ChainedError struct {

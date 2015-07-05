@@ -2,10 +2,10 @@ package process
 
 import (
 	"github.com/golang/glog"
+	"github.com/kopeio/kope/user"
 	"os"
 	"strings"
 	"syscall"
-	"github.com/kopeio/kope/user"
 )
 
 type ProcessConfig struct {
@@ -57,4 +57,3 @@ func (p *ProcessConfig) SetCredential(user *user.User) {
 	p.Credential.Uid = uint32(user.Uid)
 	p.Credential.Gid = uint32(user.Gid)
 }
-

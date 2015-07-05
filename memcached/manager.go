@@ -1,19 +1,19 @@
 package memcached
 
 import (
+	"github.com/golang/glog"
+	"github.com/kopeio/kope/base"
+	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
 	"strconv"
 	"time"
-	"github.com/golang/glog"
-	"github.com/kopeio/kope/chained"
-	"github.com/kopeio/kope/base"
 )
 
 const DefaultMemory = 128
 
 type Manager struct {
 	base.KopeBaseManager
-	process  *process.Process
+	process *process.Process
 }
 
 func (m *Manager) Configure() error {
@@ -65,7 +65,6 @@ func (m *Manager) Manage() error {
 
 	return nil
 }
-
 
 func (m *Manager) Start() (*process.Process, error) {
 	argv := []string{"/usr/bin/memcached"}

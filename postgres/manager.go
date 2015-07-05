@@ -1,27 +1,27 @@
 package postgres
 
 import (
-	"github.com/kopeio/kope/process"
-	"time"
-	"github.com/golang/glog"
-	"github.com/kopeio/kope/chained"
-	"github.com/kopeio/kope/base"
-	"github.com/kopeio/kope"
 	"errors"
-	"os"
+	"github.com/golang/glog"
+	"github.com/kopeio/kope"
+	"github.com/kopeio/kope/base"
+	"github.com/kopeio/kope/chained"
+	"github.com/kopeio/kope/process"
 	"github.com/kopeio/kope/user"
+	"os"
+	"time"
 )
 
 const DefaultMemory = 128
 
 type Manager struct {
 	base.KopeBaseManager
-	process  *process.Process
-	config Config
+	process *process.Process
+	config  Config
 }
 
 type Config struct {
-	DataDir string
+	DataDir  string
 	MemoryMB int
 }
 
@@ -117,7 +117,6 @@ func (m *Manager) runInitdb() error {
 	config := &process.ProcessConfig{}
 	config.Argv = argv
 	config.SetCredential(postgresUser)
-
 
 	for _, dir := range []string{m.config.DataDir} {
 		err := os.MkdirAll(dir, 0777)

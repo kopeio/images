@@ -9,8 +9,8 @@ import (
 	kclientcmdapi "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
 	kcontrollerFramework "github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
 	"net"
@@ -19,11 +19,10 @@ import (
 	"time"
 )
 
-
 const DefaultKubecfgFile = "/etc/kubernetes/kubeconfig"
 
 const (
-// Resync period for the kube controller loop.
+	// Resync period for the kube controller loop.
 	resyncPeriod = 5 * time.Second
 )
 
@@ -247,12 +246,11 @@ func findSelfPodIP() (net.IP, error) {
 
 		for _, addr := range addrs {
 
-
 			var ip net.IP
 			switch v := addr.(type) {
-				case *net.IPNet:
+			case *net.IPNet:
 				ip = v.IP
-				case *net.IPAddr:
+			case *net.IPAddr:
 				ip = v.IP
 			}
 			if ip == nil || ip.IsLoopback() {
@@ -293,7 +291,6 @@ func (k *Kubernetes) FindPodByPodIp(podIP string) (*api.Pod, error) {
 	// TODO: make this efficient
 	glog.Warning("Querying kubernetes for self-pod is inefficient")
 
-
 	// TODO: Can we use api.NamespaceAll,?
 	pods, err := k.kubeClient.Pods(api.NamespaceAll).List(labels.Everything(), fields.Everything())
 	if err != nil {
@@ -327,4 +324,3 @@ func (k *Kubernetes) FindPodByPodIp(podIP string) (*api.Pod, error) {
 	//	}
 	return nil, nil
 }
-

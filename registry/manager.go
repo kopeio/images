@@ -2,16 +2,16 @@ package registry
 
 import (
 	"fmt"
-	"github.com/kopeio/kope/process"
-	"time"
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/chained"
+	"github.com/kopeio/kope/process"
+	"time"
 )
 
 type Manager struct {
-	process  *process.Process
+	process          *process.Process
 	KubernetesClient *kope.Kubernetes
-	config ConfigData
+	config           ConfigData
 }
 
 type ConfigData struct {

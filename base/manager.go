@@ -2,16 +2,16 @@ package base
 
 import (
 	"fmt"
-	"os"
-	"strconv"
-	"github.com/kopeio/kope"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/golang/glog"
+	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/chained"
+	"os"
+	"strconv"
 )
 
 type KopeBaseManager struct {
-	MemoryMB int
+	MemoryMB         int
 	KubernetesClient *kope.Kubernetes
 }
 
@@ -52,8 +52,7 @@ func (m *KopeBaseManager) ConfigureMemory() error {
 	return nil
 }
 
-
-func (m*KopeBaseManager) Init() error {
+func (m *KopeBaseManager) Init() error {
 	if kope.IsKubernetes() {
 		glog.Infof("Detected kubernetes")
 		client, err := kope.NewKubernetesClient()

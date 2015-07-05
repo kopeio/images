@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"github.com/golang/glog"
-	"math/rand"
-	"time"
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/registry"
+	"math/rand"
+	"time"
 )
 
 func main() {
