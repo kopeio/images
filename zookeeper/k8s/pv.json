@@ -4,9 +4,7 @@
   "metadata": {
     "name": "zookeeper-cluster1-1",
     "labels": {
-      "name": "zookeeper-cluster1-1",
-      "kope.io/clusterid": "cluster1",
-      "kope.io/nodeid": "1"
+      "name": "zookeeper-cluster1-1"
     }
   },
   "spec": {

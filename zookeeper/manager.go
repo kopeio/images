@@ -7,6 +7,7 @@ import (
 	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,7 +32,7 @@ type Config struct {
 }
 
 func (m *Manager) Configure() error {
-	err := m.ConfigureMemory()
+	err := m.KopeBaseManager.Configure()
 	if err != nil {
 		return err
 	}
@@ -88,7 +89,41 @@ func (m *Manager) Start() (*process.Process, error) {
 		}
 	}
 
-	err := kope.WriteTemplate("/data/conf/zoo.cfg", &m.config)
+	clusterMap, err := m.GetClusterMap()
+	if err != nil {
+		return nil, err
+	}
+
+	hosts := map[string]string{}
+	hostPrefix := "cluster-zk-"
+
+	m.config.Servers = []ZkServer{}
+	for k, pod := range clusterMap {
+		zkServer := ZkServer{}
+		id, err := strconv.Atoi(k)
+		if err != nil {
+			glog.Warning("Ignoring cluster entries with invalid nodeid: ", k)
+			continue
+		}
+		zkServer.Id = id
+		host := hostPrefix + k
+		zkServer.Host = host
+		zkServer.ProxyPort = 2888
+		zkServer.LeaderPort = 3888
+		m.config.Servers = append(m.config.Servers, zkServer)
+
+		podIP := ""
+		if pod != nil {
+			podIP = pod.Pod.Status.PodIP
+		}
+		hosts[host] = podIP
+	}
+
+	err = kope.SetEtcHosts(hostPrefix, hosts)
+	if err != nil {
+		return nil, err
+	}
+	err = kope.WriteTemplate("/data/conf/zoo.cfg", &m.config)
 	if err != nil {
 		return nil, err
 	}

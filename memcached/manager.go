@@ -17,7 +17,7 @@ type Manager struct {
 }
 
 func (m *Manager) Configure() error {
-	err := m.ConfigureMemory()
+	err := m.KopeBaseManager.Configure()
 	if err != nil {
 		return err
 	}

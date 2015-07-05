@@ -1,4 +1,4 @@
-.PHONY: images kope
+.PHONY: images kope push
 
 default: images
 
@@ -7,3 +7,6 @@ kope:
 
 images: kope
 	cd images/kope-registry; make
+
+push: images
+	docker push kope/registry

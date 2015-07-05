@@ -333,3 +333,146 @@ func (k *Kubernetes) FindPodByPodIp(podIP string) (*api.Pod, error) {
 	//	}
 	return nil, nil
 }
+
+// TODO: Return map of ClusterMember (PV/PVC/Pod)?
+func (k *KopePod) GetClusterMap(clusterID string) (map[string]*KopePod, error) {
+	namespace := k.Pod.Namespace
+
+	//	pvs, err := k.KubernetesClient.kubeClient.PersistentVolumes().List(labels.NewRequirement("kope.io/clusterid", labels.InOperator, util.NewStringSet(clusterID)), fields.Everything())
+	//	if err != nil {
+	//		return nil, err
+	//	}
+
+	filter := labels.Everything().Add("kope.io/clusterid", labels.InOperator, []string{clusterID})
+	pvcs, err := k.KubernetesClient.kubeClient.PersistentVolumeClaims(namespace).List(filter, fields.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	pods, err := k.KubernetesClient.kubeClient.Pods(namespace).List(filter, fields.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	//	pvMap := map[string]string{}
+	//	for i := range pvs.Items {
+	//		pv := &pvs.Items[i]
+	//		nodeID := pv.Labels["kope.io/nodeid"]
+	//		if nodeID == "" {
+	//			continue
+	//		}
+	//		pvMap[pv.Name] = nodeID
+	//	}
+
+	clusterPods := map[string]*KopePod{}
+
+	pvcMap := map[string]string{}
+	for i := range pvcs.Items {
+		pvc := &pvcs.Items[i]
+		glog.Info("PVC", pvc)
+		nodeID := pvc.Labels["kope.io/nodeid"]
+		//		if nodeID == "" {
+		//			if pvc.Spec.VolumeName != "" {
+		//				nodeID, _ = pvMap[pvc.Spec.VolumeName]
+		//			}
+		//		}
+		if nodeID == "" {
+			continue
+		}
+		pvcMap[pvc.Name] = nodeID
+
+		// If the pod is not found, we still want the cluster map to record the nodeid
+		clusterPods[nodeID] = nil
+	}
+
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		glog.Info("POD", pod)
+		for j := range pod.Spec.Volumes {
+			volume := &pod.Spec.Volumes[j]
+			if volume.PersistentVolumeClaim != nil {
+				pvcName := volume.PersistentVolumeClaim.ClaimName
+				nodeId, _ := pvcMap[pvcName]
+				if nodeId != "" {
+					kopePod := &KopePod{}
+					kopePod.Pod = pod
+					kopePod.KubernetesClient = k.KubernetesClient
+					clusterPods[nodeId] = kopePod
+				}
+			}
+		}
+	}
+
+	return clusterPods, nil
+}
+
+type KopePod struct {
+	KubernetesClient *Kubernetes
+	Pod              *api.Pod
+
+	volumes []*KopeVolume
+}
+
+func (p *KopePod) GetVolumes() ([]*KopeVolume, error) {
+	kopeVolumes := p.volumes
+	if kopeVolumes == nil {
+		kopeVolumes = []*KopeVolume{}
+		volumes := p.Pod.Spec.Volumes
+		for i := range volumes {
+			volume := &volumes[i]
+			kopeVolume := &KopeVolume{}
+			kopeVolume.pod = p
+			kopeVolume.volume = volume
+			kopeVolumes = append(kopeVolumes, kopeVolume)
+		}
+		p.volumes = kopeVolumes
+	}
+	return kopeVolumes, nil
+}
+
+type KopeVolume struct {
+	pod    *KopePod
+	volume *api.Volume
+
+	pvc *api.PersistentVolumeClaim
+	pv  *api.PersistentVolume
+}
+
+func (v *KopeVolume) GetPersistentVolumeClaim() (*api.PersistentVolumeClaim, error) {
+	client := v.pod.KubernetesClient.kubeClient
+
+	pvc := v.pvc
+	if pvc == nil {
+		var err error
+		if v.volume.PersistentVolumeClaim != nil {
+			claimName := v.volume.PersistentVolumeClaim.ClaimName
+			pvc, err = client.PersistentVolumeClaims(v.pod.Pod.Namespace).Get(claimName)
+			if err != nil {
+				return nil, err
+			}
+			v.pvc = pvc
+		}
+	}
+	return pvc, nil
+}
+
+func (v *KopeVolume) GetPersistentVolume() (*api.PersistentVolume, error) {
+	client := v.pod.KubernetesClient.kubeClient
+
+	pv := v.pv
+	if pv == nil {
+		pvc, err := v.GetPersistentVolumeClaim()
+		if err != nil {
+			return nil, err
+		}
+
+		if pvc.Spec.VolumeName != "" {
+			pv, err = client.PersistentVolumes().Get(pvc.Spec.VolumeName)
+			if err != nil {
+				return nil, err
+			}
+			v.pv = pv
+		}
+	}
+	return pv, nil
+}

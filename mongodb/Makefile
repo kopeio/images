@@ -1,4 +1,4 @@
-.PHONY: images
+.PHONY: images push
 default: images
 
 code:
@@ -6,3 +6,6 @@ code:
 
 images: code
 	cd images/kope-mongodb; make
+
+push: images
+	docker push kope/mongodb

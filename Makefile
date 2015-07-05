@@ -3,7 +3,7 @@
 default: all images
 
 all:
-	go install github.com/kopeio/kope/registry/...
+	go install github.com/kopeio/kope/...
 
 images: baseimages postgres memcached registry etcd mongodb zookeeper
 
@@ -30,9 +30,9 @@ zookeeper:
 
 push: images
 	cd baseimages; make push
-	docker push kope/registry
-	docker push kope/memcached
-	docker push kope/postgres
-	docker push kope/etcd
-	docker push kope/mongodb
-	docker push kope/zookeeper
+	cd registry; make push
+	cd memcached; make push
+	cd postgres; make push
+	cd etcd; make push
+	cd mongodb; make push
+	cd zookeeper; make push
