@@ -1,6 +1,11 @@
-.PHONY: memcached registry push
+.PHONY: memcached registry push postgres
 
-images: memcached registry
+default: all images
+
+all:
+	go install github.com/kopeio/kope/registry/...
+
+images: postgres memcached registry
 
 memcached:
 	cd memcached; make
@@ -8,6 +13,10 @@ memcached:
 registry:
 	cd registry; make
 
+postgres:
+	cd postgres; make
+
 push: images
 	docker push kope/registry
 	docker push kope/memcached
+	docker push kope/postgres

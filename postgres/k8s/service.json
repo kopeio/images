@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"postgres",
+    "labels":{
+      "name":"postgres"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":5432,
+        "targetPort":"postgres",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"postgres"
+    }
+  }
+}

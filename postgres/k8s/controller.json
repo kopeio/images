@@ -1,0 +1,43 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"postgres",
+    "labels":{
+      "name":"postgres"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"postgres"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"postgres"
+        }
+      },
+      "spec":{
+        "containers":[
+          {
+            "image":"kope/postgres:latest",
+            "name":"postgres",
+            "ports":[
+              {
+                "name":"postgres",
+                "containerPort":5432,
+                "protocol":"TCP"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "128Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

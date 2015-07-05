@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"github.com/kopeio/kope/user"
 )
 
 type ProcessConfig struct {
@@ -50,3 +51,10 @@ func (p *ProcessConfig) Start() (*Process, error) {
 func (p *Process) Wait() (*os.ProcessState, error) {
 	return p.process.Wait()
 }
+
+func (p *ProcessConfig) SetCredential(user *user.User) {
+	p.Credential = &syscall.Credential{}
+	p.Credential.Uid = uint32(user.Uid)
+	p.Credential.Gid = uint32(user.Gid)
+}
+

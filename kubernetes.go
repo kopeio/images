@@ -47,7 +47,7 @@ func IsKubernetes() bool {
 	return host != ""
 }
 
-func fileExists(path string) bool {
+func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true
@@ -88,12 +88,12 @@ func getKubeConfig(masterUrl string) (*client.Config, error) {
 	p := os.ExpandEnv(s)
 
 	if p == "" {
-		if fileExists(DefaultKubecfgFile) {
+		if FileExists(DefaultKubecfgFile) {
 			p = DefaultKubecfgFile
 		}
 	}
 
-	if fileExists(p) {
+	if FileExists(p) {
 		config, err := kclientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			&kclientcmd.ClientConfigLoadingRules{ExplicitPath: p},
 			&kclientcmd.ConfigOverrides{ClusterInfo: kclientcmdapi.Cluster{Server: masterUrl}}).ClientConfig()
