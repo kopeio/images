@@ -23,7 +23,18 @@ func NewBlobServer(blobStore BlobStore) *BlobServer {
 	return b
 }
 
+func extractRemoteAddress(r *http.Request) string {
+	addr := r.RemoteAddr
+	colonIndex := strings.Index(addr, ":")
+	if colonIndex != -1 {
+		addr = addr[:colonIndex]
+	}
+	return addr
+}
+
 func (b *BlobServer) blobHandler(w http.ResponseWriter, r *http.Request) {
+	// TODO: Enforce policy based on remoteAddr?
+	// remoteAddr := extractRemoteAddress(r)
 	path := r.URL.Path
 	if len(path) != 0 && path[0] == '/' {
 		// Skip leading slash
