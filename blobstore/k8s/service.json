@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"blobstore",
+    "labels":{
+      "name":"blobstore"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":80,
+        "targetPort":"blobstore",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"blobstore"
+    }
+  }
+}

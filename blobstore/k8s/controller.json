@@ -1,0 +1,43 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"blobstore",
+    "labels":{
+      "name":"blobstore"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"blobstore"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"blobstore"
+        }
+      },
+      "spec":{
+        "containers":[
+          {
+            "image":"kope/blobstore:latest",
+            "name":"blobstore",
+            "ports":[
+              {
+                "name":"blobstore",
+                "containerPort":80,
+                "protocol":"TCP"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "128Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
