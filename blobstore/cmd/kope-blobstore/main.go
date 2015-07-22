@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
 	"github.com/kopeio/kope/blobstore"
@@ -20,7 +19,7 @@ func main() {
 
 	s3Config := &aws.Config{}
 	s3Config.Region = "us-east-1"
-	s3Config.Credentials = credentials.NewSharedCredentials("", "")
+	s3Config.Credentials = aws.DefaultChainCredentials
 
 	bucket := "meteor-galaxy-blobs"
 	keyPrefix := "dev"
