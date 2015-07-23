@@ -52,7 +52,7 @@ func (b *BlobServer) blobHandler(w http.ResponseWriter, r *http.Request) {
 			if r.Method == "PUT" {
 				err := b.putBlob(w, r, namespace, blobId)
 				if err != nil {
-					glog.Warning("putBlob returned error", err)
+					glog.Warning("putBlob returned error: ", err)
 					http.Error(w, "Internal error", http.StatusInternalServerError)
 				}
 				return
@@ -65,7 +65,7 @@ func (b *BlobServer) blobHandler(w http.ResponseWriter, r *http.Request) {
 func (b *BlobServer) getBlob(w http.ResponseWriter, r *http.Request, namespace string, blobId string) {
 	blob, err := b.blobStore.GetBlob(namespace, blobId)
 	if err != nil {
-		glog.Warning("Error reading blob", err)
+		glog.Warning("Error reading blob: ", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -76,7 +76,7 @@ func (b *BlobServer) getBlob(w http.ResponseWriter, r *http.Request, namespace s
 	defer blob.Release()
 	err = blob.WriteTo(w)
 	if err != nil {
-		glog.Warning("Error copying blob", err)
+		glog.Warning("Error copying blob: ", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -104,7 +104,7 @@ func (b *BlobServer) putBlob(w http.ResponseWriter, r *http.Request, namespace s
 }
 
 func (b *BlobServer) ListenAndServe() error {
-	endpoint := ":8080"
+	endpoint := ":80"
 	http.HandleFunc("/blob/", b.blobHandler)
 	glog.Info("Blobserver listening on ", endpoint)
 	err := http.ListenAndServe(endpoint, nil)

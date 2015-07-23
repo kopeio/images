@@ -3,13 +3,24 @@ package main
 import (
 	"flag"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/glog"
 	"github.com/kopeio/kope/blobstore"
+	"github.com/kopeio/kope/utils"
 )
+
+func readIfExists(path string) string {
+	b, err := utils.ReadFileIfExists(path)
+	if err != nil {
+		glog.Fatalf("error reading file: %v %v", path, err)
+	}
+	return string(b)
+}
 
 func main() {
 	//runtime.GOMAXPROCS(runtime.NumCPU())
@@ -18,11 +29,28 @@ func main() {
 	flag.Parse()
 
 	s3Config := &aws.Config{}
-	s3Config.Region = "us-east-1"
-	s3Config.Credentials = aws.DefaultChainCredentials
+	region := os.Getenv("S3_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+	s3Config.Region = region
+	creds := aws.DefaultChainCredentials
+	awsAccessKey := readIfExists("/secrets/blobstore/aws-access-key")
+	if awsAccessKey != "" {
+		awsSecretKey := readIfExists("/secrets/blobstore/aws-secret-key")
+		if awsSecretKey == "" {
+			glog.Fatalf("aws_access_key found, but aws_secret_key not found")
+		}
+		glog.Info("Using credentials found in /secrets/blobstore")
+		creds = credentials.NewStaticCredentials(awsAccessKey, awsSecretKey, "")
+	}
+	s3Config.Credentials = creds
 
-	bucket := "meteor-galaxy-blobs"
-	keyPrefix := "dev"
+	bucket := os.Getenv("S3_BUCKET")
+	keyPrefix := os.Getenv("S3_PREFIX")
+	if keyPrefix == "" {
+		keyPrefix = "blobs"
+	}
 	s3 := s3.New(s3Config)
 	blobStore := blobstore.NewS3BlobStore(s3, bucket, keyPrefix)
 	blobServer := blobstore.NewBlobServer(blobStore)
