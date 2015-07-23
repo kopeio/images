@@ -39,7 +39,7 @@ func main() {
 	if awsAccessKey != "" {
 		awsSecretKey := readIfExists("/secrets/blobstore/aws-secret-key")
 		if awsSecretKey == "" {
-			glog.Fatalf("aws_access_key found, but aws_secret_key not found")
+			glog.Fatalf("aws-access-key found, but aws-secret-key not found")
 		}
 		glog.Info("Using credentials found in /secrets/blobstore")
 		creds = credentials.NewStaticCredentials(awsAccessKey, awsSecretKey, "")
