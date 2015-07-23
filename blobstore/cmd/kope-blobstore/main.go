@@ -51,6 +51,7 @@ func main() {
 	if keyPrefix == "" {
 		keyPrefix = "blobs"
 	}
+	glog.Info("Uploading to s3://", bucket, "/", keyPrefix)
 	s3 := s3.New(s3Config)
 	blobStore := blobstore.NewS3BlobStore(s3, bucket, keyPrefix)
 	blobServer := blobstore.NewBlobServer(blobStore)

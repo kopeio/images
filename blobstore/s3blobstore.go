@@ -65,7 +65,7 @@ func (b *S3BlobStore) GetBlob(namespace string, blobId string) (Blob, error) {
 	return blob, nil
 }
 
-func (b *S3BlobStore) PutBlob(namespace string, blobId string, r io.ReadSeeker) error {
+func (b *S3BlobStore) PutBlob(namespace string, blobId string, r io.ReadSeeker, blobLength int64) error {
 	if !isValidComponent(namespace) || !isValidComponent(blobId) {
 		glog.V(2).Info("Ignoring invalid namespace / blobId: ", namespace, "/", blobId)
 		return errors.New("Invalid namespace / blobId")
@@ -76,9 +76,14 @@ func (b *S3BlobStore) PutBlob(namespace string, blobId string, r io.ReadSeeker) 
 	request.Bucket = aws.String(bucket)
 	request.Key = aws.String(key)
 	request.Body = r
-	glog.Info("Doing S3 PutObject for ", bucket, "/", key)
+	request.ContentLength = &blobLength
+	request.ContentType = aws.String("application/octet-stream")
+	glog.Info("Doing S3 PutObject for ", bucket, "/", key, " length=", blobLength)
 	_, err := b.s3.PutObject(request)
 	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			glog.Info("unknown AWS error", awsErr)
+		}
 		return chained.Error(err, "error writing object to S3")
 	}
 	// TODO: Check etag

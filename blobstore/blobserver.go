@@ -88,7 +88,7 @@ func (b *BlobServer) putBlob(w http.ResponseWriter, r *http.Request, namespace s
 		return chained.Error(err, "error creating temp file")
 	}
 	defer os.Remove(f.Name())
-	_, err = io.Copy(f, r.Body)
+	length, err := io.Copy(f, r.Body)
 	if err != nil {
 		return chained.Error(err, "error copying posted body to temp file")
 	}
@@ -96,7 +96,7 @@ func (b *BlobServer) putBlob(w http.ResponseWriter, r *http.Request, namespace s
 	if err != nil {
 		return chained.Error(err, "error seeking temp file")
 	}
-	err = b.blobStore.PutBlob(namespace, blobId, f)
+	err = b.blobStore.PutBlob(namespace, blobId, f, length)
 	if err != nil {
 		return chained.Error(err, "error writing blob")
 	}
