@@ -4,6 +4,7 @@ import (
 	"flag"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -41,7 +42,12 @@ func main() {
 		if awsSecretKey == "" {
 			glog.Fatalf("aws-access-key found, but aws-secret-key not found")
 		}
-		glog.Info("Using credentials found in /secrets/blobstore")
+
+		// It is easy to introduce whitespace into a key by mistake
+		awsAccessKey = strings.TrimSpace(awsAccessKey)
+		awsSecretKey = strings.TrimSpace(awsSecretKey)
+
+		glog.Info("Using credentials found in /secrets/blobstore accesskey=", awsAccessKey)
 		creds = credentials.NewStaticCredentials(awsAccessKey, awsSecretKey, "")
 	}
 	s3Config.Credentials = creds
