@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"l7proxy",
+    "labels":{
+      "name":"l7proxy"
+    }
+  },
+  "spec":{
+    "type": "LoadBalancer",
+    "ports": [
+      {
+        "port":80,
+        "targetPort":"http",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name": "l7proxy"
+    }
+  }
+}

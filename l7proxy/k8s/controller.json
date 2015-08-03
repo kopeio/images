@@ -1,0 +1,43 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"l7proxy",
+    "labels":{
+      "name":"l7proxy"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"l7proxy"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"l7proxy"
+        }
+      },
+      "spec":{
+        "containers":[
+          {
+            "image":"kope/l7proxy:latest",
+            "name":"l7proxy",
+            "ports":[
+              {
+                "name":"http",
+                "containerPort":80,
+                "protocol":"TCP"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "128Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
