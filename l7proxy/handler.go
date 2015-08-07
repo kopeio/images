@@ -143,6 +143,10 @@ func (p *proxiedRequest) RoundTrip(request *http.Request) (*http.Response, error
 		http.SetCookie(p.response, cookie)
 	}
 
+	if err != nil {
+		glog.V(2).Infof("error from backend for host %s: %v", host, err)
+	}
+
 	return response, err
 }
 
