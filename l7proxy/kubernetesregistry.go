@@ -47,6 +47,12 @@ func (r *kubernetesRegistry) PickBackend(host string, backendCookie string, skip
 		return nil
 	}
 
+	backendCount := len(service.Backends)
+
+	if backendCount == 0 {
+		return nil
+	}
+
 	// First try to match the backend cookie
 	if backendCookie != "" && !skip.Contains(backendCookie) {
 		backend, found := service.BackendsById[backendCookie]
@@ -54,8 +60,6 @@ func (r *kubernetesRegistry) PickBackend(host string, backendCookie string, skip
 			return backend
 		}
 	}
-
-	backendCount := len(service.Backends)
 
 	// Randomly pick a backend (that is not in skip)
 	startPos := rand.Intn(backendCount)
