@@ -220,6 +220,11 @@ func (d *serviceData) updateService(s *api.Service, _ holdsLock) bool {
 				host = v
 			}
 		}
+		for k, v := range s.Annotations {
+			if k == "http.host" {
+				host = v
+			}
+		}
 	}
 	dirty := false
 	if d.Host != host {
