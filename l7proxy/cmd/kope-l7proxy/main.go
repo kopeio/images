@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"math/rand"
 	"time"
@@ -23,10 +24,15 @@ func main() {
 
 	handler := l7proxy.NewProxyingHandler(backendProvider)
 
-	listener := l7proxy.NewHTTPListener(":80", handler)
+	tlsConfig := &tls.Config{}
+	tlsConfig.GetCertificate = backendProvider.GetCertificate
+
+	httpListener := l7proxy.NewHTTPListener(":80", handler)
+	httpsListener := l7proxy.NewHTTPSListener(":443", handler, tlsConfig)
 
 	proxy := l7proxy.NewProxyServer()
-	proxy.AddListener(listener)
+	proxy.AddListener(httpListener)
+	proxy.AddListener(httpsListener)
 
 	err = proxy.ListenAndServe()
 	if err != nil {

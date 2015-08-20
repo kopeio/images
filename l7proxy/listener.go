@@ -24,6 +24,14 @@ func NewHTTPListener(endpoint string, handler http.Handler) *Listener {
 	return l
 }
 
+func NewHTTPSListener(endpoint string, handler http.Handler, tlsConfig *tls.Config) *Listener {
+	l := &Listener{}
+	l.endpoint = endpoint
+	l.handler = handler
+	l.tlsConfig = tlsConfig
+	return l
+}
+
 type Listener struct {
 	endpoint  string
 	tlsConfig *tls.Config

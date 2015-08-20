@@ -1,10 +1,13 @@
 package l7proxy
 
 import (
+	"bytes"
+	"crypto/tls"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -12,6 +15,10 @@ import (
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/chained"
 )
+
+type CertificateProvider interface {
+	GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error)
+}
 
 type KubernetesBackendProvider struct {
 	registry kubernetesRegistry
@@ -37,11 +44,27 @@ func (b *KubernetesBackendProvider) PickBackend(r *http.Request, host string, ba
 	return b.registry.PickBackend(host, backendCookie, skip)
 }
 
-func (r *kubernetesRegistry) PickBackend(host string, backendCookie string, skip BackendIdList) *Backend {
-	locked := r.data.lock()
-	defer r.data.unlock(locked)
+func (b *KubernetesBackendProvider) GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	cn := clientHello.ServerName
+	cn = strings.ToLower(cn)
+	secret := b.registry.data.findSecretByCN(cn)
+	if secret == nil {
+		// Check for wildcard
+		dotIndex := strings.Index(cn, ".")
+		if dotIndex != -1 {
+			cn = "*" + cn[dotIndex:]
+			secret = b.registry.data.findSecretByCN(cn)
+		}
+	}
+	if secret == nil {
+		return nil, nil
+	}
 
-	service := r.data.findServiceByHost(host, locked)
+	return secret.GetCertificate()
+}
+
+func (r *kubernetesRegistry) PickBackend(host string, backendCookie string, skip BackendIdList) *Backend {
+	service := r.data.findServiceByHost(host)
 	if service == nil {
 		glog.V(2).Infof("No service registered for host %q", host)
 		return nil
@@ -91,9 +114,22 @@ type serviceData struct {
 	BackendsById map[string]*Backend
 }
 
+type secretData struct {
+	CN      string
+	CertRaw []byte
+	KeyRaw  []byte
+
+	mutex       sync.Mutex
+	certificate *tls.Certificate
+	parseError  error
+}
+
 type backendDataStore struct {
 	services       map[string]*serviceData
 	servicesByHost map[string]*serviceData
+
+	secrets     map[string]*secretData
+	secretsByCN map[string]*secretData
 
 	mutex sync.Mutex
 }
@@ -101,36 +137,179 @@ type backendDataStore struct {
 func (d *backendDataStore) init() {
 	d.services = make(map[string]*serviceData)
 	d.servicesByHost = make(map[string]*serviceData)
+	d.secrets = make(map[string]*secretData)
+	d.secretsByCN = make(map[string]*secretData)
 }
 
-type holdsLock struct {
-}
+func (d *backendDataStore) updateEndpoints(namespace, name string, endpoints *api.Endpoints) {
+	backends := buildBackends(endpoints)
 
-func (d *backendDataStore) lock() holdsLock {
-	d.mutex.Lock()
-	var l holdsLock
-	return l
-}
-
-func (d *backendDataStore) unlock(_ holdsLock) {
-	d.mutex.Unlock()
-}
-
-func (d *backendDataStore) getService(namespace, name string, create bool, _ holdsLock) *serviceData {
 	key := namespace + "_" + name
 
-	service := d.services[key]
-	if service == nil && create {
-		service = &serviceData{}
-		d.services[key] = service
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	oldData := d.services[key]
+	newData := &serviceData{}
+	if oldData != nil {
+		*newData = *oldData
 	}
+
+	changed := false
+	if endpoints == nil {
+		if newData.Backends != nil {
+			glog.V(2).Infof("Delete endpoints %s::%s", namespace, name)
+
+			newData.Backends = nil
+			changed = true
+		}
+	} else {
+		if !sliceBackendsEqual(backends, newData.Backends) {
+			glog.V(2).Infof("Update endpoints %s::%s : %v", namespace, name, backends)
+
+			newData.Backends = backends
+			backendMap := make(map[string]*Backend)
+			for i := range backends {
+				backend := &backends[i]
+				if backend.Id == "" {
+					glog.Warning("Ignoring backend with empty id: ", backend.Endpoint)
+					continue
+				}
+				backendMap[backend.Id] = backend
+			}
+			newData.BackendsById = backendMap
+
+			changed = true
+		}
+	}
+
+	if changed {
+		d.updateData(key, oldData, newData)
+	}
+}
+
+func (d *backendDataStore) updateService(namespace, name string, service *api.Service) {
+	key := namespace + "_" + name
+
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	oldData, _ := d.services[key]
+	newData := &serviceData{}
+	if oldData != nil {
+		*newData = *oldData
+	}
+
+	changed := false
+	if service == nil {
+		if oldData != nil {
+			glog.V(2).Infof("Delete service %s::%s", namespace, name)
+			newData = nil
+			changed = true
+		}
+	} else {
+		host := findHost(service)
+		if newData.Host != host {
+			glog.V(2).Infof("Update service %s::%s : host=%s", namespace, name, host)
+			newData.Host = host
+			changed = true
+		}
+	}
+
+	if changed {
+		d.updateData(key, oldData, newData)
+	}
+}
+
+func (d *backendDataStore) updateSecret(namespace, name string, s *api.Secret) {
+	key := namespace + "_" + name
+
+	certRaw := findSecretValue(s, ".crt")
+	keyRaw := findSecretValue(s, ".key")
+	cn := findSecretCN(s)
+
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	oldData, _ := d.secrets[key]
+	newData := &secretData{}
+	if oldData != nil {
+		*newData = *oldData
+	}
+
+	changed := false
+	if s == nil {
+		if oldData != nil {
+			glog.V(2).Infof("Delete secret %s::%s", namespace, name)
+			newData = nil
+			changed = true
+		}
+	} else {
+		if !bytes.Equal(newData.CertRaw, certRaw) || !bytes.Equal(newData.KeyRaw, keyRaw) {
+			glog.V(2).Infof("Update secret %s::%s", namespace, name)
+			newData.CertRaw = certRaw
+			newData.KeyRaw = keyRaw
+			newData.certificate = nil
+			newData.parseError = nil
+			changed = true
+		}
+
+		if newData.CN != cn {
+			glog.V(2).Infof("Update secret %s::%s CN=%s", namespace, name, cn)
+			newData.CN = cn
+			changed = true
+		}
+	}
+
+	if changed {
+		d.updateSecretData(key, oldData, newData)
+	}
+}
+
+// Updates the data structures.  Must hold lock.
+func (d *backendDataStore) updateData(key string, oldData, newData *serviceData) {
+	if newData != nil {
+		d.services[key] = newData
+		if oldData != nil && oldData.Host != newData.Host {
+			delete(d.servicesByHost, oldData.Host)
+		}
+		d.servicesByHost[newData.Host] = newData
+	} else {
+		delete(d.services, key)
+		if oldData != nil && oldData.Host != "" {
+			delete(d.servicesByHost, oldData.Host)
+		}
+	}
+}
+
+// Updates the data structures.  Must hold lock.
+func (d *backendDataStore) updateSecretData(key string, oldData, newData *secretData) {
+	if newData != nil {
+		d.secrets[key] = newData
+		if oldData != nil && oldData.CN != newData.CN {
+			delete(d.secretsByCN, oldData.CN)
+		}
+		d.secretsByCN[newData.CN] = newData
+	} else {
+		delete(d.secrets, key)
+		if oldData != nil && oldData.CN != "" {
+			delete(d.secretsByCN, oldData.CN)
+		}
+	}
+}
+
+func (s *backendDataStore) findServiceByHost(host string) *serviceData {
+	s.mutex.Lock()
+	service, _ := s.servicesByHost[host]
+	s.mutex.Unlock()
 	return service
 }
 
-func (d *backendDataStore) deleteService(namespace, name string, _ holdsLock) {
-	key := namespace + "_" + name
-
-	delete(d.services, key)
+func (s *backendDataStore) findSecretByCN(cn string) *secretData {
+	s.mutex.Lock()
+	secret, _ := s.secretsByCN[cn]
+	s.mutex.Unlock()
+	return secret
 }
 
 type kubernetesRegistry struct {
@@ -152,67 +331,51 @@ func sliceBackendsEqual(l, r []Backend) bool {
 	return true
 }
 
-func (s *serviceData) updateEndpoints(e *api.Endpoints, _ holdsLock) bool {
+func buildBackends(e *api.Endpoints) []Backend {
+	if e == nil {
+		return nil
+	}
 	var backends []Backend
-	if e != nil {
-		for i := range e.Subsets {
-			subset := &e.Subsets[i]
+	for i := range e.Subsets {
+		subset := &e.Subsets[i]
 
-			// Look for an http port: if there is one service use that,
-			// otherwise look for a service named "http" or "http-server"
-			httpPort := 0
-			if len(subset.Ports) == 1 {
-				httpPort = subset.Ports[0].Port
-			} else {
-				for j := range subset.Ports {
-					port := &subset.Ports[j]
-					if port.Name == "http" {
-						httpPort = port.Port
-					} else if port.Name == "http-server" && httpPort == 0 {
-						httpPort = port.Port
-					}
-				}
-			}
-
-			if httpPort != 0 {
-				for j := range subset.Addresses {
-					address := &subset.Addresses[j]
-
-					targetId := ""
-					targetRef := address.TargetRef
-					if targetRef != nil {
-						targetId = string(targetRef.UID)
-					}
-
-					backend := Backend{}
-					backend.Id = targetId
-					backend.Endpoint = address.IP + ":" + strconv.Itoa(httpPort)
-					backends = append(backends, backend)
+		// Look for an http port: if there is one service use that,
+		// otherwise look for a service named "http" or "http-server"
+		httpPort := 0
+		if len(subset.Ports) == 1 {
+			httpPort = subset.Ports[0].Port
+		} else {
+			for j := range subset.Ports {
+				port := &subset.Ports[j]
+				if port.Name == "http" {
+					httpPort = port.Port
+				} else if port.Name == "http-server" && httpPort == 0 {
+					httpPort = port.Port
 				}
 			}
 		}
-	}
 
-	dirty := false
-	if !sliceBackendsEqual(backends, s.Backends) {
-		dirty = true
-		s.Backends = backends
-		backendMap := make(map[string]*Backend)
-		for i := range s.Backends {
-			backend := &s.Backends[i]
-			if backend.Id == "" {
-				glog.Warning("Ignoring backend with empty id: ", backend.Endpoint)
-				continue
+		if httpPort != 0 {
+			for j := range subset.Addresses {
+				address := &subset.Addresses[j]
+
+				targetId := ""
+				targetRef := address.TargetRef
+				if targetRef != nil {
+					targetId = string(targetRef.UID)
+				}
+
+				backend := Backend{}
+				backend.Id = targetId
+				backend.Endpoint = address.IP + ":" + strconv.Itoa(httpPort)
+				backends = append(backends, backend)
 			}
-			backendMap[backend.Id] = backend
 		}
-		s.BackendsById = backendMap
-		glog.V(2).Infof("Updated backends for %q: %v", e.Name, backends)
 	}
-	return dirty
+	return backends
 }
 
-func (d *serviceData) updateService(s *api.Service, _ holdsLock) bool {
+func findHost(s *api.Service) string {
 	var host string
 	if s != nil {
 		for k, v := range s.Labels {
@@ -226,106 +389,68 @@ func (d *serviceData) updateService(s *api.Service, _ holdsLock) bool {
 			}
 		}
 	}
-	dirty := false
-	if d.Host != host {
-		glog.V(2).Infof("Updating service %q host to %q", s.Name, host)
-		d.Host = host
-		dirty = true
-	}
-	return dirty
+	return host
 }
 
-// Finds the service with the specified host.  Only valid while lock is held.
-func (s *backendDataStore) findServiceByHost(host string, _ holdsLock) *serviceData {
-	service, found := s.servicesByHost[host]
-	if !found {
-		return nil
+func findSecretCN(s *api.Secret) string {
+	var cn string
+	if s != nil {
+		for k, v := range s.Annotations {
+			if k == "cert-cn" {
+				cn = v
+			}
+		}
 	}
-	return service
+	return cn
+}
+
+func findSecretValue(s *api.Secret, suffix string) []byte {
+	var found []byte
+	if s != nil {
+		for k, v := range s.Data {
+			if strings.HasSuffix(k, suffix) {
+				found = v
+				break
+			}
+		}
+	}
+	return found
 }
 
 func (r *kubernetesRegistry) AddEndpoints(e *api.Endpoints) {
-	locked := r.data.lock()
-	defer r.data.unlock(locked)
-
-	service := r.data.getService(e.Namespace, e.Name, true, locked)
-	service.updateEndpoints(e, locked)
-
-	if glog.V(2) {
-		glog.Infof("Add endpoint %s::%s : %v", e.Namespace, e.Name, e)
-	}
+	r.data.updateEndpoints(e.Namespace, e.Name, e)
 }
 
 func (r *kubernetesRegistry) DeleteEndpoints(e *api.Endpoints) {
-	locked := r.data.lock()
-	defer r.data.unlock(locked)
-
-	service := r.data.getService(e.Namespace, e.Name, false, locked)
-	if service != nil {
-		service.updateEndpoints(nil, locked)
-	}
-
-	if glog.V(2) {
-		glog.Infof("Delete endpoint %s::%s : %v", e.Namespace, e.Name, e)
-	}
+	r.data.updateEndpoints(e.Namespace, e.Name, nil)
 }
 
 func (r *kubernetesRegistry) UpdateEndpoints(oldEndpoints, e *api.Endpoints) {
-	locked := r.data.lock()
-	defer r.data.unlock(locked)
-
-	service := r.data.getService(e.Namespace, e.Name, true, locked)
-	service.updateEndpoints(e, locked)
-
-	if glog.V(2) {
-		glog.Infof("Update endpoint %s::%s : %v", e.Namespace, e.Name, e)
-	}
+	r.data.updateEndpoints(e.Namespace, e.Name, e)
 }
 
-func (r *kubernetesRegistry) AddService(e *api.Service) {
-	locked := r.data.lock()
-	defer r.data.unlock(locked)
-
-	service := r.data.getService(e.Namespace, e.Name, true, locked)
-	oldHost := service.Host
-	service.updateService(e, locked)
-	newHost := service.Host
-
-	if oldHost != newHost {
-		if oldHost != "" {
-			delete(r.data.servicesByHost, oldHost)
-		}
-		if newHost != "" {
-			r.data.servicesByHost[newHost] = service
-		}
-	}
-
-	if glog.V(2) {
-		glog.Infof("Add service %s::%s : %v", e.Namespace, e.Name, e)
-	}
+func (r *kubernetesRegistry) AddService(s *api.Service) {
+	r.data.updateService(s.Namespace, s.Name, s)
 }
 
-func (r *kubernetesRegistry) DeleteService(e *api.Service) {
-	locked := r.data.lock()
-	defer r.data.unlock(locked)
-
-	r.data.deleteService(e.Namespace, e.Name, locked)
-
-	if glog.V(2) {
-		glog.Infof("Delete service %s::%s : %v", e.Namespace, e.Name, e)
-	}
+func (r *kubernetesRegistry) DeleteService(s *api.Service) {
+	r.data.updateService(s.Namespace, s.Name, nil)
 }
 
 func (r *kubernetesRegistry) UpdateService(old, s *api.Service) {
-	locked := r.data.lock()
-	defer r.data.unlock(locked)
+	r.data.updateService(s.Namespace, s.Name, s)
+}
 
-	service := r.data.getService(s.Namespace, s.Name, true, locked)
-	service.updateService(s, locked)
+func (r *kubernetesRegistry) AddSecret(s *api.Secret) {
+	r.data.updateSecret(s.Namespace, s.Name, s)
+}
 
-	if glog.V(2) {
-		glog.Infof("Update service %s::%s : %v", s.Namespace, s.Name, s)
-	}
+func (r *kubernetesRegistry) DeleteSecret(s *api.Secret) {
+	r.data.updateSecret(s.Namespace, s.Name, nil)
+}
+
+func (r *kubernetesRegistry) UpdateSecret(old, s *api.Secret) {
+	r.data.updateSecret(s.Namespace, s.Name, s)
 }
 
 func (r *kubernetesRegistry) init() error {
@@ -341,6 +466,35 @@ func (r *kubernetesRegistry) init() error {
 	// TODO: We don't really _need_ services; we could look for a tag on an RC
 	go r.k8s.WatchEndpoints(r)
 	go r.k8s.WatchServices(r)
+	go r.k8s.WatchSecrets(r)
 
 	return nil
+}
+
+func (s *secretData) GetCertificate() (*tls.Certificate, error) {
+	// TODO: Just use mutex to avoid repeated parsing??
+	if s.CertRaw == nil || s.KeyRaw == nil {
+		return nil, nil
+	}
+
+	s.mutex.Lock()
+	if s.certificate != nil {
+		s.mutex.Unlock()
+		return s.certificate, nil
+	}
+	defer s.mutex.Unlock()
+
+	if s.parseError != nil {
+		return nil, s.parseError
+	}
+
+	parsed, err := tls.X509KeyPair(s.CertRaw, s.KeyRaw)
+	if err != nil {
+		s.parseError = err
+		glog.V(2).Info("Error parsing certificate for %s: %v", s.CN, err)
+		return nil, err
+	} else {
+		s.certificate = &parsed
+		return s.certificate, nil
+	}
 }

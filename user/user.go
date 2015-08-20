@@ -2,10 +2,13 @@ package user
 
 import (
 	"errors"
-	"github.com/kopeio/kope/chained"
+	"io/ioutil"
 	"os"
 	"os/user"
+	"path"
 	"strconv"
+
+	"github.com/kopeio/kope/chained"
 )
 
 type User struct {
@@ -41,6 +44,38 @@ func (u *User) Chown(f string) error {
 	err := os.Chown(f, u.Uid, u.Gid)
 	if err != nil {
 		return chained.Error(err, "error doing chown on: ", f)
+	}
+	return nil
+}
+
+func (u *User) Lchown(f string) error {
+	err := os.Lchown(f, u.Uid, u.Gid)
+	if err != nil {
+		return chained.Error(err, "error doing lchown on: ", f)
+	}
+	return nil
+}
+
+func (u *User) LchownRecursive(f string) error {
+	entries, err := ioutil.ReadDir(f)
+	if err != nil {
+		return chained.Error(err, "error reading directory (for chown): ", f)
+	}
+
+	for _, entry := range entries {
+		entryPath := path.Join(f, entry.Name())
+		if entry.IsDir() {
+			err = u.LchownRecursive(entryPath)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = u.Lchown(entryPath)
+			if err != nil {
+				return err
+			}
+		}
+
 	}
 	return nil
 }

@@ -2,6 +2,11 @@ package kope
 
 import (
 	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"time"
+
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
@@ -12,17 +17,13 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
-	"net"
-	"net/url"
-	"os"
-	"time"
 )
 
 const DefaultKubecfgFile = "/etc/kubernetes/kubeconfig"
 
 const (
 	// Resync period for the kube controller loop.
-	resyncPeriod = 5 * time.Second
+	resyncPeriod = 60 * time.Second
 )
 
 type EndpointWatch interface {
@@ -35,6 +36,12 @@ type ServiceWatch interface {
 	AddService(s *api.Service)
 	DeleteService(s *api.Service)
 	UpdateService(oldService, newService *api.Service)
+}
+
+type SecretWatch interface {
+	AddSecret(s *api.Secret)
+	DeleteSecret(s *api.Secret)
+	UpdateSecret(oldSecret, newSecret *api.Secret)
 }
 
 type Kubernetes struct {
@@ -228,6 +235,52 @@ func (k *Kubernetes) WatchServices(watcher ServiceWatch) {
 				}
 
 				watcher.UpdateService(oldE, newE)
+			},
+		},
+	)
+	controller.Run(util.NeverStop)
+}
+
+func (k *Kubernetes) WatchSecrets(watcher SecretWatch) {
+	glog.Info("Starting watch on k8s secrets")
+
+	// Watch all changes
+	// TODO: filter
+	lw := cache.NewListWatchFromClient(k.kubeClient, "secrets", api.NamespaceAll, fields.Everything())
+
+	var controller *kcontrollerFramework.Controller
+	_, controller = framework.NewInformer(
+		lw,
+		&api.Secret{},
+		resyncPeriod,
+		framework.ResourceEventHandlerFuncs{
+			AddFunc: func(o interface{}) {
+				e, ok := o.(*api.Secret)
+				if !ok {
+					glog.Warning("Got unexpected object of type %T, expecting Secret", o)
+				} else {
+					watcher.AddSecret(e)
+				}
+			},
+			DeleteFunc: func(o interface{}) {
+				e, ok := o.(*api.Secret)
+				if !ok {
+					glog.Warning("Got unexpected object of type %T, expecting Secret", o)
+				} else {
+					watcher.DeleteSecret(e)
+				}
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				oldE, ok := oldObj.(*api.Secret)
+				if !ok {
+					glog.Warning("Got unexpected object of type %T, expecting Secret", oldObj)
+				}
+				newE, ok := newObj.(*api.Secret)
+				if !ok {
+					glog.Warning("Got unexpected object of type %T, expecting Secret", newObj)
+				}
+
+				watcher.UpdateSecret(oldE, newE)
 			},
 		},
 	)

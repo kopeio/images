@@ -18,12 +18,12 @@ func (p *ProxyServer) AddListener(listener *Listener) {
 func (p *ProxyServer) ListenAndServe() error {
 	errors := make(chan error, 10)
 	for _, listener := range p.listeners {
-		go func() {
+		go func(listener *Listener) {
 			err := listener.listenAndServe()
 			if err != nil {
 				errors <- err
 			}
-		}()
+		}(listener)
 	}
 
 	err := <-errors
