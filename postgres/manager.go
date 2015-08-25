@@ -2,14 +2,18 @@ package postgres
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path"
+	"strings"
+	"time"
+
 	"github.com/golang/glog"
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/base"
 	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
 	"github.com/kopeio/kope/user"
-	"os"
-	"time"
 )
 
 const DefaultMemory = 128
@@ -70,6 +74,18 @@ func (m *Manager) Manage() error {
 		if err != nil {
 			return chained.Error(err, "error initializing database")
 		}
+
+		password := "helloworld"
+
+		err = m.setRootPassword(password)
+		if err != nil {
+			return chained.Error(err, "error setting root password")
+		}
+	}
+
+	err = m.writeConfig()
+	if err != nil {
+		return chained.Error(err, "error writing configuration")
 	}
 
 	process, err := m.Start()
@@ -86,8 +102,15 @@ func (m *Manager) Manage() error {
 }
 
 func (m *Manager) Start() (*process.Process, error) {
+	return m.start()
+}
+
+func (m *Manager) start(extraArgs ...string) (*process.Process, error) {
 	argv := []string{"/usr/lib/postgresql/9.4/bin/postgres"}
 	argv = append(argv, "-D", m.config.DataDir)
+	if len(extraArgs) != 0 {
+		argv = append(argv, extraArgs...)
+	}
 
 	postgresUser, err := user.Find("postgres")
 	if err != nil {
@@ -105,18 +128,136 @@ func (m *Manager) Start() (*process.Process, error) {
 	return process, nil
 }
 
-func (m *Manager) runInitdb() error {
-	argv := []string{"/usr/lib/postgresql/9.4/bin/initdb"}
-	argv = append(argv, "-D", m.config.DataDir)
+func (m *Manager) writeConfig() error {
+	pathPgHbaConf := path.Join(m.config.DataDir, "pg_hba.conf")
+	err := kope.WriteTemplate(pathPgHbaConf, &m.config)
+	if err != nil {
+		return err
+	}
 
+	pathPostgresqlConf := path.Join(m.config.DataDir, "postgresql.conf")
+	err = kope.WriteTemplate(pathPostgresqlConf, &m.config)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func sqlEscape(s string) string {
+	return strings.Replace(s, "'", "''", -1)
+}
+
+func (m *Manager) setRootPassword(password string) error {
+	// Start but only listen on UNIX pipes
+	glog.Info("Starting postgres (listening locally only)")
+	process, err := m.start("-c", "listen_addresses=")
+	if err != nil {
+		return chained.Error(err, "error starting postgres while trying to set root password")
+	}
+
+	go func() {
+		glog.Info("waiting for exit")
+		state, err := process.Wait()
+		if err != nil {
+			glog.Info("postgres exited with error condition: ", err)
+		}
+		if !state.Success() {
+			glog.Info("postgres exited with non-zero exit-code")
+		}
+
+	}()
+
+	err = m.waitHealthy(10 /*120*/ * time.Second)
+	if err != nil {
+		return chained.Error(err, "timeout waiting for postgres to start listening")
+	}
+
+	sql := "ALTER ROLE postgres WITH PASSWORD '" + sqlEscape(password) + "'"
+	_, err = m.runPsql(sql)
+	if err != nil {
+		return chained.Error(err, "error running psql to change root password")
+	}
+
+	glog.Info("Stopping postgres")
+	err = m.pgCtlStop()
+	if err != nil {
+		return nil
+	}
+	return nil
+}
+
+func (m *Manager) waitHealthy(timeout time.Duration) error {
+	timeoutAt := time.Now().Add(timeout)
+	for {
+		if !time.Now().Before(timeoutAt) {
+			return fmt.Errorf("postgres did not become ready before timeout")
+		}
+		if m.isHealthy() {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func (m *Manager) pgCtlStop() error {
+	argv := []string{"/usr/lib/postgresql/9.4/bin/pg_ctl", "stop", "-D", m.config.DataDir}
+
+	_, err := m.runAsPostgresUser(argv)
+	if err != nil {
+		return chained.Error(err, "error stopping postgres")
+	}
+
+	return nil
+}
+
+func (m *Manager) isHealthy() bool {
+	_, err := m.runPsql("SELECT 1")
+	if err != nil {
+		glog.V(2).Info("postgres not yet healthy: ", err)
+		return false
+	}
+	return true
+}
+
+func (m *Manager) runPsql(sql string) (*os.ProcessState, error) {
+	argv := []string{"/usr/lib/postgresql/9.4/bin/psql", "--username", "postgres", "-c", sql}
+	argv = append(argv, "-h", "/var/run/postgresql")
+
+	state, err := m.runAsPostgresUser(argv)
+	if err != nil {
+		return nil, err
+	}
+	if state.Success() {
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("unexpected exit code from psql")
+}
+
+func (m *Manager) runAsPostgresUser(argv []string) (*os.ProcessState, error) {
 	postgresUser, err := user.Find("postgres")
 	if err != nil {
-		return chained.Error(err, "error finding user")
+		return nil, chained.Error(err, "error finding user")
 	}
 
 	config := &process.ProcessConfig{}
 	config.Argv = argv
 	config.SetCredential(postgresUser)
+
+	process, err := config.Start()
+	if err != nil {
+		return nil, err
+	}
+
+	return process.Wait()
+}
+
+func (m *Manager) runInitdb() error {
+	postgresUser, err := user.Find("postgres")
+	if err != nil {
+		return chained.Error(err, "error finding user")
+	}
 
 	for _, dir := range []string{m.config.DataDir} {
 		err := os.MkdirAll(dir, 0777)
@@ -129,6 +270,13 @@ func (m *Manager) runInitdb() error {
 		}
 	}
 
+	argv := []string{"/usr/lib/postgresql/9.4/bin/initdb"}
+	argv = append(argv, "-D", m.config.DataDir)
+
+	config := &process.ProcessConfig{}
+	config.Argv = argv
+	config.SetCredential(postgresUser)
+	config.Env = []string{"LANG=en_US.utf8"}
 	process, err := config.Start()
 	if err != nil {
 		return chained.Error(err, "error starting initdb")
