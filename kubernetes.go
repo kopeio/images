@@ -7,16 +7,16 @@ import (
 	"os"
 	"time"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
-	kclientcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/client/clientcmd"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
-	kcontrollerFramework "github.com/GoogleCloudPlatform/kubernetes/pkg/controller/framework"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
+	"k8s.io/kubernetes/pkg/api"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/unversioned/cache"
+	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
+	"k8s.io/kubernetes/pkg/controller/framework"
+	kcontrollerFramework "k8s.io/kubernetes/pkg/controller/framework"
+	"k8s.io/kubernetes/pkg/fields"
+	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/util"
 )
 
 const DefaultKubecfgFile = "/etc/kubernetes/kubeconfig"
@@ -45,7 +45,7 @@ type SecretWatch interface {
 }
 
 type Kubernetes struct {
-	kubeClient *client.Client
+	kubeClient *kclient.Client
 }
 
 func IsKubernetes() bool {
@@ -91,7 +91,7 @@ func getKubeMasterUrl() (string, error) {
 	return masterUrl, nil
 }
 
-func getKubeConfig(masterUrl string) (*client.Config, error) {
+func getKubeConfig(masterUrl string) (*kclient.Config, error) {
 	s := "${KUBECFG_FILE}"
 	p := os.ExpandEnv(s)
 
@@ -119,12 +119,12 @@ func getKubeConfig(masterUrl string) (*client.Config, error) {
 	} else {
 		glog.Warning("No kubecfg file found; using default in-cluster configuration")
 
-		return client.InClusterConfig()
+		return kclient.InClusterConfig()
 	}
 }
 
 // TODO: evaluate using pkg/client/clientcmd
-func newKubeClient() (*client.Client, error) {
+func newKubeClient() (*kclient.Client, error) {
 	masterUrl, err := getKubeMasterUrl()
 	if err != nil {
 		return nil, err
@@ -136,7 +136,7 @@ func newKubeClient() (*client.Client, error) {
 	}
 	glog.Infof("Using %s for kubernetes master", config.Host)
 	glog.Infof("Using kubernetes API %s", config.Version)
-	return client.New(config)
+	return kclient.New(config)
 }
 
 func NewKubernetesClient() (*Kubernetes, error) {
