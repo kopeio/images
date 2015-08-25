@@ -160,6 +160,6 @@ func (p *proxiedRequest) canRetry(e error) bool {
 		}
 	}
 
-	glog.V(2).Info("Will not retry after error: %v", e)
+	glog.V(2).Info("Will not retry after error: ", e)
 	return false
 }
