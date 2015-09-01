@@ -40,10 +40,11 @@ type Listener struct {
 
 func (l *Listener) listenAndServe() error {
 	s := &http.Server{
-		Addr:           l.endpoint,
-		Handler:        l.handler,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
+		Addr:    l.endpoint,
+		Handler: l.handler,
+		// TODO: Unclear if we want a timeout here at all.  A big POST takes a long time (e.g. Docker registry)
+		ReadTimeout:    60 * time.Second,
+		WriteTimeout:   60 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 	// TODO: ConnState ?

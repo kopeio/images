@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/golang/glog"
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/chained"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 type CertificateProvider interface {

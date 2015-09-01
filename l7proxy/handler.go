@@ -2,9 +2,12 @@ package l7proxy
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"time"
 
 	"github.com/golang/glog"
@@ -103,6 +106,38 @@ func (p *proxiedRequest) RoundTrip(request *http.Request) (*http.Response, error
 	host := p.request.Host
 	stickyBackendId := findStickyBackendId(p.request)
 
+	// We need to buffer the body, in case we need to retry
+	// TODO: Buffer to file
+	// (this is also good for backends; we can absorb slow-uploads)
+	var bufferedBody *os.File
+	if request.Body != nil {
+		// Switch between
+		bufferedBody, err = ioutil.TempFile("", "body")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create temp file: %v", err)
+		}
+
+		defer func() {
+			if bufferedBody != nil {
+				err := bufferedBody.Close()
+				if err != nil {
+					// TODO: Only if backend didn't close?
+					glog.Warning("error closing temp file: ", err)
+				}
+
+				err = os.Remove(bufferedBody.Name())
+				if err != nil {
+					glog.Warning("error removing temp file: ", err)
+				}
+			}
+		}()
+		_, err = io.Copy(bufferedBody, request.Body)
+		if err != nil {
+			glog.V(2).Info("error buffering body: ", err)
+			return nil, fmt.Errorf("error buffering body: %v", err)
+		}
+	}
+
 	attempt := 0
 	var skip BackendIdList
 	for {
@@ -115,6 +150,13 @@ func (p *proxiedRequest) RoundTrip(request *http.Request) (*http.Response, error
 		}
 
 		request.URL.Host = backend.Endpoint
+		if bufferedBody != nil {
+			_, err := bufferedBody.Seek(0, 0)
+			if err != nil {
+				return nil, fmt.Errorf("error seeking to start of tempfile: %v", err)
+			}
+			request.Body = bufferedBody
+		}
 
 		response, err = p.transport.RoundTrip(request)
 		if err == nil {
@@ -127,8 +169,11 @@ func (p *proxiedRequest) RoundTrip(request *http.Request) (*http.Response, error
 
 		attempt++
 		if attempt >= p.maxAttempts {
+			glog.V(2).Info("got retryable error, but retry limit already reached: ", err)
 			break
 		}
+
+		glog.V(2).Info("will retry after retryable error: ", err)
 
 		skip = append(skip, backend.Id)
 	}
