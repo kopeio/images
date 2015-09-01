@@ -1,23 +1,23 @@
 {
-  "kind":"Service",
-  "apiVersion":"v1",
-  "metadata":{
-    "name":"registry",
-    "labels":{
-      "name":"registry"
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+        "labels": {
+            "name": "registry"
+        },
+        "name": "registry"
+    },
+    "spec": {
+        "createExternalLoadBalancer": false,
+        "ports": [
+            {
+                "port": 5000,
+                "protocol": "TCP",
+                "targetPort": "registry"
+            }
+        ],
+        "selector": {
+            "name": "registry"
+        }
     }
-  },
-  "spec":{
-    "createExternalLoadBalancer": false,
-    "ports": [
-      {
-        "port":5000,
-        "targetPort":"registry",
-        "protocol":"TCP"
-      }
-    ],
-    "selector":{
-      "name":"registry"
-    }
-  }
 }

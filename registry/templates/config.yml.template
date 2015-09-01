@@ -3,7 +3,11 @@ storage:
     cache:
         blobdescriptor: inmemory
     filesystem:
-        rootdirectory: /var/lib/registry
+        rootdirectory: {{.RegistryDir}}
+auth:
+  htpasswd:
+    realm: basic-realm
+    path: {{.HtpasswdPath}}
 http:
     addr: :5000
     secret: {{.Secret}}

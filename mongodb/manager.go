@@ -1,13 +1,14 @@
 package mongodb
 
 import (
+	"os"
+	"time"
+
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/base"
 	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
 	"github.com/kopeio/kope/user"
-	"os"
-	"time"
 )
 
 type Manager struct {

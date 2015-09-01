@@ -2,11 +2,12 @@ package base
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+
 	"github.com/golang/glog"
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/chained"
-	"os"
-	"strconv"
 )
 
 var selfPodMissingTombstone = &kope.KopePod{}

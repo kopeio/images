@@ -1,38 +1,52 @@
 {
-  "kind":"ReplicationController",
-  "apiVersion":"v1",
-  "metadata":{
-    "name":"registry",
-    "labels":{
-      "name":"registry"
-    }
-  },
-  "spec":{
-    "replicas":1,
-    "selector":{
-      "name":"registry"
+    "apiVersion": "v1",
+    "kind": "ReplicationController",
+    "metadata": {
+        "labels": {
+            "name": "registry"
+        },
+        "name": "registry"
     },
-    "template":{
-      "metadata":{
-        "labels":{
-          "name":"registry"
+    "spec": {
+        "replicas": 1,
+        "selector": {
+            "name": "registry"
+        },
+        "template": {
+            "metadata": {
+                "labels": {
+                    "name": "registry"
+                }
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "image": "kope/registry:latest",
+                        "name": "registry",
+                        "ports": [
+                            {
+                                "containerPort": 5000,
+                                "name": "registry",
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/data",
+                                "name": "data"
+                            }
+                        ]
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "data",
+                        "persistentVolumeClaim": {
+                            "claimName": "registry"
+                        }
+                    }
+                ]
+            }
         }
-      },
-      "spec":{
-        "containers":[
-          {
-            "image":"kope/registry:latest",
-            "name":"registry",
-            "ports":[
-              {
-                "name":"registry",
-                "containerPort":5000,
-                "protocol":"TCP"
-              }
-            ]
-          }
-        ]
-      }
     }
-  }
 }

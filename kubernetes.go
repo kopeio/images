@@ -349,9 +349,33 @@ func (k *Kubernetes) FindSelfPod() (*api.Pod, error) {
 	return k.FindPodByPodIp(podIP.String())
 }
 
+func (k *Kubernetes) FindSecret(namespace string, name string) (*api.Secret, error) {
+	secret, err := k.kubeClient.Secrets(namespace).Get(name)
+	if err != nil {
+
+		apiStatusErr, ok := err.(kclient.APIStatus)
+		if ok {
+			status := apiStatusErr.Status()
+			if status.Reason == api.StatusReasonNotFound {
+				return nil, nil
+			}
+
+			glog.V(2).Info("got APIStatus err: ", status)
+		}
+
+		return nil, err
+	}
+	return secret, nil
+}
+
+func (k *Kubernetes) CreateSecret(secret *api.Secret) (*api.Secret, error) {
+	secret, err := k.kubeClient.Secrets(secret.Namespace).Create(secret)
+	return secret, err
+}
+
 func (k *Kubernetes) FindPodByPodIp(podIP string) (*api.Pod, error) {
 	// TODO: make this efficient
-	glog.Warning("Querying kubernetes for self-pod is inefficient")
+	glog.Warning("Querying kubernetes for pod by podIP is inefficient ", podIP)
 
 	// TODO: Can we use api.NamespaceAll,?
 	pods, err := k.kubeClient.Pods(api.NamespaceAll).List(labels.Everything(), fields.Everything())
