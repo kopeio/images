@@ -43,8 +43,9 @@ func (l *Listener) listenAndServe() error {
 		Addr:    l.endpoint,
 		Handler: l.handler,
 		// TODO: Unclear if we want a timeout here at all.  A big POST takes a long time (e.g. Docker registry)
-		ReadTimeout:    60 * time.Second,
-		WriteTimeout:   60 * time.Second,
+		// For now we have just set a really long timeout
+		ReadTimeout:    600 * time.Second,
+		WriteTimeout:   600 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 	// TODO: ConnState ?
