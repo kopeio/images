@@ -52,17 +52,6 @@ type DockerServerConfig struct {
 	Auth  string `json:"auth"`
 }
 
-func generatePassword(bits int) (string, error) {
-	byteCount := (bits + 7) / 8
-
-	secretBytes := make([]byte, byteCount)
-	_, err := crypto_rand.Read(secretBytes)
-	if err != nil {
-		return "", chained.Error(err, "error generating secret")
-	}
-	return base64.StdEncoding.EncodeToString(secretBytes), nil
-}
-
 func (m *Manager) findDockerAuth() (*DockerServerConfig, error) {
 	me, err := m.GetSelfPod()
 	if err != nil {
@@ -147,7 +136,7 @@ func (m *Manager) writeHtpasswd(path string) error {
 	if dockerServerConfig == nil {
 		glog.Info("Generating new credentials")
 
-		password, err := generatePassword(128)
+		password, err := utils.GeneratePassword(128)
 		if err != nil {
 			return err
 		}

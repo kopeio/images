@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -8,12 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/kubernetes/pkg/api"
+
 	"github.com/golang/glog"
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/base"
 	"github.com/kopeio/kope/chained"
 	"github.com/kopeio/kope/process"
 	"github.com/kopeio/kope/user"
+	"github.com/kopeio/kope/utils"
 )
 
 const DefaultMemory = 128
@@ -27,6 +31,11 @@ type Manager struct {
 type Config struct {
 	DataDir  string
 	MemoryMB int
+}
+
+type PostgresSecretData struct {
+	User     string `json: "user"`
+	Password string `json: "password"`
 }
 
 func (m *Manager) Configure() error {
@@ -58,12 +67,70 @@ func (m *Manager) Configure() error {
 	return nil
 }
 
+func (m *Manager) findSecretData(secretName string) (*PostgresSecretData, error) {
+	me, err := m.GetSelfPod()
+	if err != nil {
+		return nil, err
+	}
+
+	secret, err := m.KubernetesClient.FindSecret(me.Pod.Namespace, secretName)
+	if err != nil {
+		return nil, chained.Error(err, "error fetching secret")
+	}
+
+	if secret == nil {
+		return nil, nil
+	}
+
+	if secret.Data == nil {
+		return nil, nil
+	}
+
+	configData, found := secret.Data["config.json"]
+	if !found {
+		glog.Warning("Secret found, but config.json not found")
+		return nil, nil
+	}
+
+	config := &PostgresSecretData{}
+	err = json.Unmarshal(configData, config)
+	if err != nil {
+		return nil, chained.Error(err, "error reading config.json")
+	}
+
+	return config, nil
+}
+
+func (m *Manager) writeSecretData(secretName string, config *PostgresSecretData) error {
+	j, err := json.Marshal(config)
+	if err != nil {
+		return chained.Error(err, "error building secret config.json")
+	}
+
+	me, err := m.GetSelfPod()
+	if err != nil {
+		return err
+	}
+
+	secret := &api.Secret{}
+	secret.Namespace = me.Pod.Namespace
+	secret.Name = secretName
+	secret.Type = "Opaque"
+	secret.Data = map[string][]byte{}
+	secret.Data["config.json"] = j
+
+	_, err = m.KubernetesClient.CreateSecret(secret)
+	if err != nil {
+		return chained.Error(err, "error creating secret")
+	}
+
+	return nil
+}
 func (m *Manager) Manage() error {
 	err := m.Init()
 	if err != nil {
 		return chained.Error(err, "error initializing")
 	}
-
 	err = m.Configure()
 	if err != nil {
 		return chained.Error(err, "error configuring")
@@ -75,9 +142,31 @@ func (m *Manager) Manage() error {
 			return chained.Error(err, "error initializing database")
 		}
 
-		password := "helloworld"
+		secretName := m.ClusterID
+		if secretName == "" {
+			secretName = "postgres"
+		}
 
-		err = m.setRootPassword(password)
+		config, err := m.findSecretData(secretName)
+		if err != nil {
+			return chained.Error(err, "error reading secret data")
+		}
+
+		if config == nil {
+			config = &PostgresSecretData{}
+			config.User = "postgres"
+			password, err := utils.GeneratePassword(128)
+			if err != nil {
+				return chained.Error(err, "error generating password")
+			}
+			config.Password = password
+			err = m.writeSecretData(secretName, config)
+			if err != nil {
+				return chained.Error(err, "error writing secret data")
+			}
+		}
+
+		err = m.setRootPassword(config.Password)
 		if err != nil {
 			return chained.Error(err, "error setting root password")
 		}
