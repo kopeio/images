@@ -172,6 +172,8 @@ func (m *KopeBaseManager) GetSelfPod() (*kope.KopePod, error) {
 	if selfPod != nil {
 		if selfPod == selfPodMissingTombstone {
 			return nil, nil
+		} else {
+			return selfPod, nil
 		}
 	}
 
