@@ -1,0 +1,60 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"kafka-cluster1",
+    "labels":{
+      "name":"kafka-cluster1",
+      "kope.io/clusterid": "kafka-cluster1"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"kafka",
+      "kope.io/clusterid": "kafka-cluster1"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"kafka",
+          "kope.io/clusterid": "kafka-cluster1"
+        }
+      },
+      "spec":{
+        "volumes": [
+          {
+            "name": "data",
+            "persistentVolumeClaim": {
+              "claimName": "claim-kafka-cluster1-1"
+            }
+          }
+        ],
+        "containers":[
+          {
+            "image":"kope/kafka:latest",
+            "name":"kafka",
+            "ports":[
+              {
+                "name":"kafka",
+                "containerPort":9092,
+                "protocol":"TCP"
+              }
+            ],
+            "volumeMounts": [
+              {
+                "name": "data",
+                "mountPath": "/data"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "256Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "kind": "PersistentVolume",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "kafka-cluster1-1",
+    "labels": {
+      "name": "kafka-cluster1-1"
+    }
+  },
+  "spec": {
+    "capacity": {
+      "storage": "100Gi"
+    },
+    "accessModes": ["ReadWriteOnce"],
+    "awsElasticBlockStore": {
+      "volumeID": "aws://us-west-1b/vol-d8e31020",
+      "fsType": "ext4"
+    }
+  }
+}

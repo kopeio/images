@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"kafka",
+    "labels":{
+      "name":"kafka"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":9092,
+        "targetPort":"kafka",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"kafka"
+    }
+  }
+}
