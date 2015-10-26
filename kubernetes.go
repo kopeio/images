@@ -9,8 +9,9 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/cache"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/client/unversioned/cache"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	kcontrollerFramework "k8s.io/kubernetes/pkg/controller/framework"
@@ -356,7 +357,7 @@ func (k *Kubernetes) FindSecret(namespace string, name string) (*api.Secret, err
 		apiStatusErr, ok := err.(kclient.APIStatus)
 		if ok {
 			status := apiStatusErr.Status()
-			if status.Reason == api.StatusReasonNotFound {
+			if status.Reason == unversioned.StatusReasonNotFound {
 				return nil, nil
 			}
 
