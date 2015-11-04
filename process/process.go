@@ -1,9 +1,12 @@
 package process
 
 import (
+	"bytes"
+	"fmt"
 	"github.com/golang/glog"
 	"github.com/kopeio/kope/user"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 )
@@ -19,6 +22,28 @@ type ProcessConfig struct {
 
 type Process struct {
 	process *os.Process
+}
+
+func (p *ProcessConfig) Exec() (string, string, error) {
+	if len(p.Argv) == 0 {
+		return "", "", fmt.Errorf("empty command line")
+	}
+	name := p.Argv[0]
+	args := p.Argv[1:]
+	c := exec.Command(name, args...)
+	c.SysProcAttr = &syscall.SysProcAttr{}
+
+	if p.Credential != nil {
+		c.SysProcAttr.Credential = p.Credential
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	c.Stdout = &stdout
+	c.Stderr = &stderr
+
+	err := c.Run()
+	return string(stdout.Bytes()), string(stderr.Bytes()), err
 }
 
 func (p *ProcessConfig) Start() (*Process, error) {

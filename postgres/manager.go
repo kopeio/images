@@ -1,16 +1,10 @@
 package postgres
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path"
-	"strings"
-	"time"
-
-	"k8s.io/kubernetes/pkg/api"
-
 	"github.com/golang/glog"
 	"github.com/kopeio/kope"
 	"github.com/kopeio/kope/base"
@@ -18,14 +12,21 @@ import (
 	"github.com/kopeio/kope/process"
 	"github.com/kopeio/kope/user"
 	"github.com/kopeio/kope/utils"
+	"io/ioutil"
+	"k8s.io/kubernetes/pkg/api"
+	"os"
+	"path"
+	"strings"
+	"time"
 )
 
 const DefaultMemory = 128
 
 type Manager struct {
 	base.KopeBaseManager
-	process *process.Process
-	config  Config
+	process   *process.Process
+	config    Config
+	SecretDir string
 }
 
 type Config struct {
@@ -34,8 +35,9 @@ type Config struct {
 }
 
 type PostgresSecretData struct {
-	User     string `json: "user"`
-	Password string `json: "password"`
+	Db       string `json:"db,omitempty"`
+	User     string `json:"user"`
+	Password string `json:"password"`
 }
 
 func (m *Manager) Configure() error {
@@ -62,6 +64,7 @@ func (m *Manager) Configure() error {
 	}
 
 	m.config.DataDir = "/data/db"
+	m.SecretDir = "/data/secrets"
 	m.config.MemoryMB = m.MemoryMB
 
 	return nil
@@ -98,6 +101,11 @@ func (m *Manager) findSecretData(secretName string) (*PostgresSecretData, error)
 		return nil, chained.Error(err, "error reading config.json")
 	}
 
+	if config.User == "" && config.Db == "" && config.Password == "" {
+		// Like a format change
+		return nil, fmt.Errorf("Secret data was unexpectedly empty")
+	}
+
 	return config, nil
 }
 
@@ -124,6 +132,16 @@ func (m *Manager) writeSecretData(secretName string, config *PostgresSecretData)
 		return chained.Error(err, "error creating secret")
 	}
 
+	err = os.MkdirAll(m.SecretDir, 0777)
+	if err != nil {
+		return chained.Error(err, "error doing mkdir on: ", m.SecretDir)
+	}
+	secretPath := path.Join(m.SecretDir, secretName)
+	err = ioutil.WriteFile(secretPath, j, 0700)
+	if err != nil {
+		return chained.Error(err, "error writing local secret file: "+secretPath)
+	}
+
 	return nil
 }
 func (m *Manager) Manage() error {
@@ -137,11 +155,6 @@ func (m *Manager) Manage() error {
 	}
 
 	if !kope.FileExists(m.config.DataDir) {
-		err = m.runInitdb()
-		if err != nil {
-			return chained.Error(err, "error initializing database")
-		}
-
 		secretName := m.ClusterID
 		if secretName == "" {
 			secretName = "postgres"
@@ -166,6 +179,11 @@ func (m *Manager) Manage() error {
 			}
 		}
 
+		err = m.runInitdb()
+		if err != nil {
+			return chained.Error(err, "error initializing database")
+		}
+
 		err = m.setRootPassword(config.Password)
 		if err != nil {
 			return chained.Error(err, "error setting root password")
@@ -183,11 +201,185 @@ func (m *Manager) Manage() error {
 	}
 	m.process = process
 
+	err = m.waitHealthy(120 * time.Second)
+	if err != nil {
+		return chained.Error(err, "timeout waiting for postgres to start listening")
+	}
+
+	glog.Info("Postgres is running")
+
+	labels, err := m.GetLabels()
+	if err != nil {
+		return err
+	}
+	if labels != nil {
+		appDB, _ := labels["db.kope.io/database"]
+		appUser, _ := labels["db.kope.io/user"]
+		if appDB != "" {
+			if appUser == "" {
+				appUser = appDB
+			}
+			secretName := "db-" + appDB
+			err = m.ensureAppDb(secretName, appDB, appUser)
+			if err != nil {
+				return chained.Error(err, "error creating user db")
+			}
+		}
+	}
+
 	for {
 		time.Sleep(5 * time.Second)
 	}
 
 	return nil
+}
+
+func (m *Manager) ensureAppDb(secretName string, db string, user string) error {
+	glog.Infof("Ensuring that app db exists: db=%q, user=%q", db, user)
+	config, err := m.findSecretData(secretName)
+	if err != nil {
+		return chained.Error(err, "error reading secret data")
+	}
+
+	if config == nil {
+		config = &PostgresSecretData{}
+		config.User = user
+		config.Db = db
+		password, err := utils.GeneratePassword(128)
+		if err != nil {
+			return chained.Error(err, "error generating password")
+		}
+		config.Password = password
+		err = m.writeSecretData(secretName, config)
+		if err != nil {
+			return chained.Error(err, "error writing secret data")
+		}
+	}
+
+	_, err = m.ensureUser(config.User, config.Password)
+	if err != nil {
+		return chained.Error(err, "error creating user")
+	}
+
+	_, err = m.ensureDb(config.Db, config.User)
+	if err != nil {
+		return chained.Error(err, "error creating database")
+	}
+
+	return nil
+}
+
+func buildSql(sql string, args ...interface{}) string {
+	format := strings.Replace(sql, "?", "%s", -1)
+	escaped := []interface{}{} // Actually []string
+	for _, arg := range args {
+		var e string
+		switch arg := arg.(type) {
+		case bool:
+			e = fmt.Sprintf("%t", arg)
+		case int:
+			e = fmt.Sprintf("%d", arg)
+		case string:
+			e = escapeSqlString(arg)
+		default:
+			glog.Fatalf("unexpected type in buildSql: %T\n", arg)
+		}
+		escaped = append(escaped, e)
+	}
+	return fmt.Sprintf(format, escaped...)
+}
+
+func isAlphanumeric(s string) bool {
+	for _, r := range s {
+		switch {
+		case 'a' <= r && r <= 'z':
+		case 'A' <= r && r <= 'Z':
+		case '0' <= r && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func escapeSqlString(s string) string {
+	var buffer bytes.Buffer
+	buffer.WriteString("'")
+	for _, r := range s {
+		switch {
+		case 'a' <= r && r <= 'z':
+			buffer.WriteRune(r)
+		case 'A' <= r && r <= 'Z':
+			buffer.WriteRune(r)
+		case '0' <= r && r <= '9':
+			buffer.WriteRune(r)
+		default:
+			switch r {
+			case '_', '-', ' ':
+				buffer.WriteRune(r)
+			default:
+				glog.Fatalf("unhandled character in escapeSqlString: %v", r)
+			}
+		}
+	}
+	buffer.WriteString("'")
+	return string(buffer.Bytes())
+}
+
+func (m *Manager) ensureUser(user string, password string) (bool, error) {
+	glog.Infof("Ensuring that user exists: %q", user)
+	sql := buildSql("SELECT * FROM pg_catalog.pg_user WHERE usename=?", user)
+	results, err := m.runPsql(sql)
+	if err != nil {
+		return false, chained.Error(err, "error querying for user")
+	}
+
+	if len(results.Rows) != 0 {
+		return false, nil
+	}
+
+	// Output looks like 'CREATE ROLE'
+	// Note that user is not escaped :-(
+	if !isAlphanumeric(user) {
+		return false, fmt.Errorf("invalid user name: %q", user)
+	}
+	glog.Infof("Creating user %q", user)
+	sql = buildSql("CREATE USER "+user+" WITH PASSWORD ?", password)
+	_, err = m.runPsql(sql)
+	if err != nil {
+		return false, chained.Error(err, "error creating user")
+	}
+
+	return true, nil
+}
+
+func (m *Manager) ensureDb(db string, owner string) (bool, error) {
+	glog.Infof("Ensuring that database exists: %q", db)
+	sql := buildSql("SELECT * FROM pg_catalog.pg_database WHERE datname=?", db)
+	results, err := m.runPsql(sql)
+	if err != nil {
+		return false, chained.Error(err, "error querying for database")
+	}
+
+	if len(results.Rows) != 0 {
+		return false, nil
+	}
+
+	// Note that db and owner are not escaped :-(
+	if !isAlphanumeric(db) {
+		return false, fmt.Errorf("invalid db name: %q", db)
+	}
+	if !isAlphanumeric(owner) {
+		return false, fmt.Errorf("invalid user name: %q", owner)
+	}
+	glog.Infof("Creating database %q", db)
+	sql = buildSql("CREATE DATABASE " + db + " WITH OWNER " + owner)
+	_, err = m.runPsql(sql)
+	if err != nil {
+		return false, chained.Error(err, "error creating db")
+	}
+
+	return true, nil
 }
 
 func (m *Manager) Start() (*process.Process, error) {
@@ -257,7 +449,7 @@ func (m *Manager) setRootPassword(password string) error {
 
 	}()
 
-	err = m.waitHealthy(10 /*120*/ * time.Second)
+	err = m.waitHealthy(120 * time.Second)
 	if err != nil {
 		return chained.Error(err, "timeout waiting for postgres to start listening")
 	}
@@ -292,7 +484,7 @@ func (m *Manager) waitHealthy(timeout time.Duration) error {
 func (m *Manager) pgCtlStop() error {
 	argv := []string{"/usr/lib/postgresql/9.4/bin/pg_ctl", "stop", "-D", m.config.DataDir}
 
-	_, err := m.runAsPostgresUser(argv)
+	_, _, err := m.runAsPostgresUser(argv)
 	if err != nil {
 		return chained.Error(err, "error stopping postgres")
 	}
@@ -309,37 +501,65 @@ func (m *Manager) isHealthy() bool {
 	return true
 }
 
-func (m *Manager) runPsql(sql string) (*os.ProcessState, error) {
-	argv := []string{"/usr/lib/postgresql/9.4/bin/psql", "--username", "postgres", "-c", sql}
+func (m *Manager) runPsql(sql string) (*sqlResults, error) {
+	argv := []string{"/usr/lib/postgresql/9.4/bin/psql", "--username", "postgres"}
+	// Make parsable
+	argv = append(argv, "--no-align", "-z", "--pset", "footer=off")
+	argv = append(argv, "-c", sql)
 	argv = append(argv, "-h", "/var/run/postgresql")
 
-	state, err := m.runAsPostgresUser(argv)
+	stdout, stderr, err := m.runAsPostgresUser(argv)
+	if err != nil {
+		glog.Infof("error running sql query")
+		glog.Infof("stdout: %s", stdout)
+		glog.Infof("stderr: %s", stderr)
+		return nil, chained.Error(err, "error running psql query")
+	}
+
+	if len(stderr) != 0 {
+		glog.Warningf("unexpected stderr from psql: %q", stderr)
+	}
+
+	sqlOutput, err := parsePsqlOutput(stdout)
 	if err != nil {
 		return nil, err
 	}
-	if state.Success() {
-		return nil, nil
-	}
-
-	return nil, fmt.Errorf("unexpected exit code from psql")
+	return sqlOutput, nil
 }
 
-func (m *Manager) runAsPostgresUser(argv []string) (*os.ProcessState, error) {
+type sqlResults struct {
+	Columns []string
+	Rows    [][]string
+}
+
+func parsePsqlOutput(stdout string) (*sqlResults, error) {
+	results := &sqlResults{}
+
+	for i, line := range strings.Split(stdout, "\n") {
+		if len(line) == 0 {
+			continue
+		}
+		tokens := strings.Split(line, "\x00")
+		if i == 0 {
+			results.Columns = tokens
+		} else {
+			results.Rows = append(results.Rows, tokens)
+		}
+	}
+	return results, nil
+}
+
+func (m *Manager) runAsPostgresUser(argv []string) (string, string, error) {
 	postgresUser, err := user.Find("postgres")
 	if err != nil {
-		return nil, chained.Error(err, "error finding user")
+		return "", "", chained.Error(err, "error finding user")
 	}
 
 	config := &process.ProcessConfig{}
 	config.Argv = argv
 	config.SetCredential(postgresUser)
 
-	process, err := config.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	return process.Wait()
+	return config.Exec()
 }
 
 func (m *Manager) runInitdb() error {
