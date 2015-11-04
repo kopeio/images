@@ -1,0 +1,43 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"confluent-schemaregistry",
+    "labels":{
+      "name":"confluent-schemaregistry"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"confluent-schemaregistry"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"confluent-schemaregistry"
+        }
+      },
+      "spec":{
+        "containers":[
+          {
+            "image":"kope/confluentschemaregistry:latest",
+            "name":"confluent-schemaregistry",
+            "ports":[
+              {
+                "name":"schemaregistry",
+                "containerPort":80,
+                "protocol":"TCP"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "256Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"confluent-schemaregistry",
+    "labels":{
+      "name":"confluent-schemaregistry"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":80,
+        "targetPort":"schemaregistry",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"confluent-schemaregistry"
+    }
+  }
+}
