@@ -102,7 +102,7 @@ func (m *Manager) findSecretData(secretName string) (*PostgresSecretData, error)
 	}
 
 	if config.User == "" && config.Db == "" && config.Password == "" {
-		// Like a format change
+		// Probably due to the format change
 		return nil, fmt.Errorf("Secret data was unexpectedly empty")
 	}
 
