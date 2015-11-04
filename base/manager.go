@@ -10,8 +10,6 @@ import (
 	"github.com/kopeio/kope/chained"
 )
 
-var selfPodMissingTombstone = &kope.KopePod{}
-
 type KopeBaseManager struct {
 	MemoryMB  int
 	ClusterID string
@@ -19,7 +17,7 @@ type KopeBaseManager struct {
 	NodeID           *string
 	KubernetesClient *kope.Kubernetes
 
-	// Cached self-pod (access through GetSelfPod, as this may be selfPodMissingTombstone)
+	// Cached self-pod (access through GetSelfPod)
 	selfPod *kope.KopePod
 }
 
@@ -31,19 +29,17 @@ func (m *KopeBaseManager) Configure() error {
 
 	memory := os.Getenv("MEMORY_LIMIT")
 	if memory == "" {
-		if selfPod != nil {
-			if len(selfPod.Pod.Spec.Containers) > 1 {
-				glog.Warning("Found multiple containers in pod, choosing arbitrarily")
-			}
-			memoryLimit := selfPod.Pod.Spec.Containers[0].Resources.Limits.Memory()
-			if memoryLimit != nil {
-				memoryLimitBytes := memoryLimit.Value()
-				if memoryLimitBytes > 0 {
-					memoryLimitMB := int(memoryLimitBytes / (1024 * 1024))
-					glog.Info("Found container memory limit: ", memoryLimitMB)
+		if len(selfPod.Pod.Spec.Containers) > 1 {
+			glog.Warning("Found multiple containers in pod, choosing arbitrarily")
+		}
+		memoryLimit := selfPod.Pod.Spec.Containers[0].Resources.Limits.Memory()
+		if memoryLimit != nil {
+			memoryLimitBytes := memoryLimit.Value()
+			if memoryLimitBytes > 0 {
+				memoryLimitMB := int(memoryLimitBytes / (1024 * 1024))
+				glog.Info("Found container memory limit: ", memoryLimitMB)
 
-					m.MemoryMB = memoryLimitMB
-				}
+				m.MemoryMB = memoryLimitMB
 			}
 		}
 	} else {
@@ -54,11 +50,8 @@ func (m *KopeBaseManager) Configure() error {
 		m.MemoryMB = memoryMB
 	}
 
-	clusterID := ""
-	if selfPod != nil {
-		labels := selfPod.Pod.Labels
-		clusterID = labels["kope.io/clusterid"]
-	}
+	labels := selfPod.Pod.Labels
+	clusterID, _ := labels["kope.io/clusterid"]
 	if clusterID != "" {
 		glog.Info("Found clusterid: ", clusterID)
 		m.ClusterID = clusterID
@@ -74,10 +67,6 @@ func (m *KopeBaseManager) GetClusterMap() (map[string]*kope.KopePod, error) {
 	selfPod, err := m.GetSelfPod()
 	if err != nil {
 		return nil, err
-	}
-
-	if selfPod == nil {
-		return nil, nil
 	}
 
 	clusterID := m.ClusterID
@@ -110,10 +99,8 @@ func (m *KopeBaseManager) GetNodeId() (string, error) {
 			return "", err
 		}
 
-		if selfPod != nil {
-			labels := selfPod.Pod.Labels
-			nodeID = labels["kope.io/clusterid"]
-		}
+		labels := selfPod.Pod.Labels
+		nodeID, _ := labels["kope.io/clusterid"]
 
 		if nodeID == "" {
 			volumes, err := selfPod.GetVolumes()
@@ -167,30 +154,24 @@ func (m *KopeBaseManager) GetNodeId() (string, error) {
 	return nodeID, nil
 }
 
+// Gets the pod that we are running in.  Returns an error if it cannot be found.
 func (m *KopeBaseManager) GetSelfPod() (*kope.KopePod, error) {
 	selfPod := m.selfPod
 	if selfPod != nil {
-		if selfPod == selfPodMissingTombstone {
-			return nil, nil
-		} else {
-			return selfPod, nil
-		}
+		return selfPod, nil
 	}
 
 	if m.KubernetesClient != nil {
-		k8sPod, err := m.KubernetesClient.FindSelfPod()
+		k8sPod, err := m.KubernetesClient.GetSelfPod()
 		if err != nil {
 			return nil, chained.Error(err, "Unable to find self pod in kubernetes")
 		}
-		if k8sPod != nil {
-			pod := &kope.KopePod{}
-			pod.Pod = k8sPod
-			pod.KubernetesClient = m.KubernetesClient
-			m.selfPod = pod
-			selfPod = pod
-		} else {
-			m.selfPod = selfPodMissingTombstone
-		}
+
+		pod := &kope.KopePod{}
+		pod.Pod = k8sPod
+		pod.KubernetesClient = m.KubernetesClient
+		m.selfPod = pod
+		selfPod = pod
 	}
 
 	return selfPod, nil
@@ -198,14 +179,11 @@ func (m *KopeBaseManager) GetSelfPod() (*kope.KopePod, error) {
 
 func (m *KopeBaseManager) GetLabels() (map[string]string, error) {
 	selfPod, err := m.GetSelfPod()
-	if m != nil {
+	if err != nil {
 		return nil, err
 	}
 
-	if selfPod != nil {
-		return selfPod.Pod.Labels, nil
-	}
-	return nil, nil
+	return selfPod.Pod.Labels, nil
 }
 
 func (m *KopeBaseManager) Init() error {

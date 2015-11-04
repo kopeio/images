@@ -337,17 +337,36 @@ func findSelfPodIP() (net.IP, error) {
 	return ips[0], nil
 }
 
-func (k *Kubernetes) FindSelfPod() (*api.Pod, error) {
+// Gets the pod that we are running in; returns an error if it cannot be found
+func (k *Kubernetes) GetSelfPod() (*api.Pod, error) {
 	glog.Info("Querying kubernetes for self-pod")
 
-	podIP, err := findSelfPodIP()
+	podIP, err := FindSelfPodIP()
 	if err != nil {
 		return nil, err
 	}
 	if podIP == nil {
-		return nil, nil
+		return nil, fmt.Errorf("cannot determine pod ip")
 	}
-	return k.FindPodByPodIp(podIP.String())
+
+	// We wait and retry in case of a delay before the pod is sent to the API
+	attempt := 0
+	for {
+		pod, err := k.FindPodByPodIp(podIP.String())
+		if err != nil {
+			return nil, err
+		}
+		if pod != nil {
+			return pod, nil
+		}
+
+		if attempt > 10 {
+			return nil, fmt.Errorf("could not find self-pod in kubernetes API")
+		}
+
+		glog.Warning("Did not find self-pod; will wait and retry")
+		time.Sleep(5 * time.Second)
+	}
 }
 
 func (k *Kubernetes) FindSecret(namespace string, name string) (*api.Secret, error) {
@@ -376,7 +395,7 @@ func (k *Kubernetes) CreateSecret(secret *api.Secret) (*api.Secret, error) {
 
 func (k *Kubernetes) FindPodByPodIp(podIP string) (*api.Pod, error) {
 	// TODO: make this efficient
-	glog.Warning("Querying kubernetes for pod by podIP is inefficient ", podIP)
+	glog.Warningf("Querying kubernetes for pod by podIP is inefficient %q", podIP)
 
 	// TODO: Can we use api.NamespaceAll,?
 	pods, err := k.kubeClient.Pods(api.NamespaceAll).List(labels.Everything(), fields.Everything())
@@ -409,6 +428,9 @@ func (k *Kubernetes) FindPodByPodIp(podIP string) (*api.Pod, error) {
 	//			}
 	//		}
 	//	}
+
+	glog.Warningf("Unable to find pod by podIP=%q", podIP)
+
 	return nil, nil
 }
 
