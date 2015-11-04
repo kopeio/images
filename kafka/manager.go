@@ -18,8 +18,9 @@ type Manager struct {
 }
 
 type Config struct {
-	ZookeeperConnect string
-	BrokerID int
+	AdvertisedHostName string
+	ZookeeperConnect   string
+	BrokerID           int
 }
 
 func (m *Manager) Configure() error {
@@ -85,9 +86,15 @@ func (m *Manager) Start() (*process.Process, error) {
 		return nil, err
 	}
 
+	podIP, err := kope.FindSelfPodIP()
+	if err != nil {
+		return nil, err
+	}
+
 	var config Config
 	config.BrokerID = 1
 	config.ZookeeperConnect = "zookeeper:2181"
+	config.AdvertisedHostName = podIP.String()
 
 	if len(clusterMap) != 0 && len(clusterMap) != 1 {
 		glog.Fatal("Detected cluster configuration but not implemented")

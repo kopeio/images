@@ -288,7 +288,7 @@ func (k *Kubernetes) WatchSecrets(watcher SecretWatch) {
 	controller.Run(util.NeverStop)
 }
 
-func findSelfPodIP() (net.IP, error) {
+func FindSelfPodIP() (net.IP, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
