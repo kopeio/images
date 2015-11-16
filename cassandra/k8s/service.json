@@ -1,0 +1,25 @@
+{
+  "kind":"Service",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"cassandra-cluster1",
+    "labels":{
+      "name":"cassandra-cluster1",
+      "kope.io/clusterid": "cluster1"
+    }
+  },
+  "spec":{
+    "createExternalLoadBalancer": false,
+    "ports": [
+      {
+        "port":9042,
+        "targetPort":"cassandra",
+        "protocol":"TCP"
+      }
+    ],
+    "selector":{
+      "name":"cassandra-cluster1",
+      "kope.io/clusterid": "cluster1"
+    }
+  }
+}

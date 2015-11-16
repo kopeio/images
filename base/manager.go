@@ -29,18 +29,12 @@ func (m *KopeBaseManager) Configure() error {
 
 	memory := os.Getenv("MEMORY_LIMIT")
 	if memory == "" {
-		if len(selfPod.Pod.Spec.Containers) > 1 {
-			glog.Warning("Found multiple containers in pod, choosing arbitrarily")
-		}
-		memoryLimit := selfPod.Pod.Spec.Containers[0].Resources.Limits.Memory()
-		if memoryLimit != nil {
-			memoryLimitBytes := memoryLimit.Value()
-			if memoryLimitBytes > 0 {
-				memoryLimitMB := int(memoryLimitBytes / (1024 * 1024))
-				glog.Info("Found container memory limit: ", memoryLimitMB)
+		memoryLimitBytes, found := selfPod.MemoryLimit()
+		if found &&  memoryLimitBytes > 0 {
+			memoryLimitMB := int(memoryLimitBytes / (1024 * 1024))
+			glog.Info("Found container memory limit: ", memoryLimitMB)
 
-				m.MemoryMB = memoryLimitMB
-			}
+			m.MemoryMB = memoryLimitMB
 		}
 	} else {
 		memoryMB, err := strconv.Atoi(memory)
@@ -50,8 +44,7 @@ func (m *KopeBaseManager) Configure() error {
 		m.MemoryMB = memoryMB
 	}
 
-	labels := selfPod.Pod.Labels
-	clusterID, _ := labels["kope.io/clusterid"]
+	clusterID, _ := selfPod.Label("clusterid")
 	if clusterID != "" {
 		glog.Info("Found clusterid: ", clusterID)
 		m.ClusterID = clusterID
@@ -170,6 +163,13 @@ func (m *KopeBaseManager) GetSelfPod() (*kope.KopePod, error) {
 		pod := &kope.KopePod{}
 		pod.Pod = k8sPod
 		pod.KubernetesClient = m.KubernetesClient
+		m.selfPod = pod
+		selfPod = pod
+	} else {
+		// Assume docker
+		pod := &kope.KopePod{}
+		pod.Pod = nil
+		pod.KubernetesClient = nil
 		m.selfPod = pod
 		selfPod = pod
 	}

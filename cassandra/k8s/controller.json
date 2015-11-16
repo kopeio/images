@@ -1,0 +1,60 @@
+{
+  "kind":"ReplicationController",
+  "apiVersion":"v1",
+  "metadata":{
+    "name":"cassandra-cluster1",
+    "labels":{
+      "name":"cassandra-cluster1",
+      "kope.io/clusterid": "cluster1"
+    }
+  },
+  "spec":{
+    "replicas":1,
+    "selector":{
+      "name":"cassandra",
+      "kope.io/clusterid": "cluster1"
+    },
+    "template":{
+      "metadata":{
+        "labels":{
+          "name":"cassandra",
+          "kope.io/clusterid": "cluster1"
+        }
+      },
+      "spec":{
+        "volumes": [
+          {
+            "name": "data",
+            "persistentVolumeClaim": {
+              "claimName": "claim-cassandra-cluster1-1"
+            }
+          }
+        ],
+        "containers":[
+          {
+            "image":"kope/cassandra:latest",
+            "name":"cassandra",
+            "ports":[
+              {
+                "name":"cassandra",
+                "containerPort":9042,
+                "protocol":"TCP"
+              }
+            ],
+            "volumeMounts": [
+              {
+                "name": "data",
+                "mountPath": "/data"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "memory": "256Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

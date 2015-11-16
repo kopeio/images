@@ -1,0 +1,20 @@
+{
+  "kind": "PersistentVolume",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "cassandra-cluster1-1",
+    "labels": {
+      "name": "cassandra-cluster1-1"
+    }
+  },
+  "spec": {
+    "capacity": {
+      "storage": "10Gi"
+    },
+    "accessModes": ["ReadWriteOnce"],
+    "awsElasticBlockStore": {
+      "volumeID": "aws://us-west-1b/vol-4f7686b7",
+      "fsType": "ext4"
+    }
+  }
+}

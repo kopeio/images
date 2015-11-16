@@ -513,6 +513,35 @@ type KopePod struct {
 	volumes []*KopeVolume
 }
 
+func (p *KopePod) MemoryLimit() (int64, bool) {
+	if p.Pod != nil {
+		// Kubernetes
+		if len(p.Pod.Spec.Containers) > 1 {
+			glog.Warning("Found multiple containers in pod, choosing arbitrarily")
+		}
+		memoryLimit := p.Pod.Spec.Containers[0].Resources.Limits.Memory()
+		if memoryLimit != nil {
+			memoryLimitBytes := memoryLimit.Value()
+			if memoryLimitBytes > 0 {
+				return memoryLimitBytes, true
+			}
+		}
+	}
+
+	return 0, false
+}
+
+func (p*KopePod) Label(key string) (string, bool) {
+	if p.Pod != nil {
+		// Kubernetes
+		labels := p.Pod.Labels
+		v, found :=  labels["kope.io/" + key]
+		return v, found
+	}
+
+	return "", false
+}
+
 func (p *KopePod) GetVolumes() ([]*KopeVolume, error) {
 	kopeVolumes := p.volumes
 	if kopeVolumes == nil {
